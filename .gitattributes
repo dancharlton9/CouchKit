@@ -1,0 +1,4 @@
+* text=auto eol=crlf
+*.png binary
+*.pext binary
+*.exe binary
