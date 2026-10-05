@@ -1,0 +1,37 @@
+{
+  "Controller": {
+    "Enabled": true,
+    "CloseHoldMs": 1500,
+    "KillHoldMs": 4000,
+    "GuideButton": true,
+    "GuideTapMaxMs": 500
+  },
+  "Display": {
+    "KeepPlayniteOnTv": true,
+    "KeepGameOnTv": true,
+    "MuteWhileStreaming": true,
+    "FocusPlayniteAfterStream": true,
+    "TvWidth": 0,
+    "TvHeight": 0,
+    "TvRefreshRate": 0,
+    "VirtualDisplayNames": [ "Virtual", "SudoMaker", "IddSample", "Parsec" ]
+  },
+  "Audio": {
+    "TvDeviceName": ""
+  },
+  "Games": {
+    "EmulatorFolders": [],
+    "ProtectedProcesses": []
+  },
+  "Lighting": {
+    "Enabled": true,
+    "OpenRgbHost": "127.0.0.1",
+    "OpenRgbPort": 6742,
+    "Palette": [ "#75dddd", "#84c7d0", "#9297c4", "#9368b7", "#aa3e98" ],
+    "GameColours": true,
+    "BrowseCycleSeconds": 9,
+    "GameCycleSeconds": 7,
+    "Fps": 30,
+    "Span": 0.5
+  }
+}

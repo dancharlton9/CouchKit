@@ -1,0 +1,6 @@
+bin/
+*.log
+couchkit.json
+current-game.txt
+current-game-art.txt
+palette-test.txt
