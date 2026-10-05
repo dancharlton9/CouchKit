@@ -1,4 +1,4 @@
-// Settings: read once at startup from couchkit.json next to CouchKit.exe. Anything missing from the
+// Settings: read once at startup from %APPDATA%\CouchKit\couchkit.json. Anything missing from the
 // file keeps the default below, so a file only needs the values that differ.
 using System;
 using System.IO;
@@ -21,7 +21,17 @@ class Settings
         Lighting = new LightingSettings();
     }
 
-    public static readonly string FilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "couchkit.json");
+    // Settings, log and the running-game files the Playnite add-on writes all live here, outside
+    // the install folder, so reinstalling or updating never touches them.
+    public static readonly string DataDir = CreateDataDir();
+    public static readonly string FilePath = Path.Combine(DataDir, "couchkit.json");
+
+    static string CreateDataDir()
+    {
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CouchKit");
+        try { Directory.CreateDirectory(dir); } catch { }
+        return dir;
+    }
 
     // Returns the settings and a note for the log (which file was used, or why the defaults were).
     public static Settings Load(out string note)

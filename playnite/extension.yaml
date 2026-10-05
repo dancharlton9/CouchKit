@@ -1,0 +1,10 @@
+Id: CouchKit_6f0c6a51-8d0b-4c41-9a38-2b1f4f6d7c11
+Name: CouchKit
+Author: Dan Charlton
+Version: 1.0.0
+Module: CouchKit.Playnite.dll
+Type: GenericPlugin
+Icon: icon.png
+Links:
+  - Name: GitHub
+    Url: https://github.com/dancharlton9/CouchKit

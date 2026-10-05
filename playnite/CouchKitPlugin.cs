@@ -1,0 +1,111 @@
+// CouchKit Playnite add-on: starts CouchKit (bundled with this DLL) when Playnite starts, and
+// tells it which game is running by writing two files to %APPDATA%\CouchKit:
+//   current-game.txt      the game's install folder (CouchKit treats processes run from it as the game)
+//   current-game-art.txt  the full path of the game's background image, or its cover if it has none
+// Both are deleted when the game exits.
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Playnite.SDK;
+using Playnite.SDK.Events;
+using Playnite.SDK.Models;
+using Playnite.SDK.Plugins;
+
+public class CouchKitPlugin : GenericPlugin
+{
+    static readonly ILogger logger = LogManager.GetLogger();
+
+    static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CouchKit");
+    static readonly string GamePath = Path.Combine(DataDir, "current-game.txt");
+    static readonly string ArtPath = Path.Combine(DataDir, "current-game-art.txt");
+
+    static readonly Guid PluginId = Guid.Parse("6f0c6a51-8d0b-4c41-9a38-2b1f4f6d7c11");
+    public override Guid Id { get { return PluginId; } }
+
+    public CouchKitPlugin(IPlayniteAPI api) : base(api)
+    {
+        Properties = new GenericPluginProperties { HasSettings = false };
+    }
+
+    public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
+    {
+        // Left over from a crash or a game still running from before Playnite restarted
+        DeleteGameFiles();
+        StartCouchKit();
+    }
+
+    public override void OnGameStarted(OnGameStartedEventArgs args)
+    {
+        Game game = args.Game;
+        try
+        {
+            Directory.CreateDirectory(DataDir);
+            File.WriteAllText(GamePath, game.InstallDirectory ?? "");
+            string art = new[] { game.BackgroundImage, game.CoverImage }.FirstOrDefault(a => !string.IsNullOrEmpty(a));
+            string artPath = art == null ? null : PlayniteApi.Database.GetFullFilePath(art);
+            if (!string.IsNullOrEmpty(artPath) && File.Exists(artPath)) File.WriteAllText(ArtPath, artPath);
+            else DeleteFile(ArtPath);
+        }
+        catch (Exception ex) { logger.Error(ex, "CouchKit: could not record the running game"); }
+    }
+
+    public override void OnGameStopped(OnGameStoppedEventArgs args)
+    {
+        DeleteGameFiles();
+    }
+
+    public override void OnGameStartupCancelled(OnGameStartupCancelledEventArgs args)
+    {
+        DeleteGameFiles();
+    }
+
+    static void DeleteGameFiles()
+    {
+        DeleteFile(GamePath);
+        DeleteFile(ArtPath);
+    }
+
+    static void DeleteFile(string path)
+    {
+        try { File.Delete(path); } catch (Exception ex) { logger.Warn(ex, "CouchKit: could not delete " + path); }
+    }
+
+    // CouchKit runs from a copy in %LOCALAPPDATA%\CouchKit rather than from the add-on's folder, so
+    // it never holds the add-on's files open while Playnite installs an update. The copy is
+    // refreshed (and CouchKit restarted) whenever the bundled version changes.
+    static readonly string RunDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchKit");
+
+    static void StartCouchKit()
+    {
+        try
+        {
+            string bundled = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "CouchKit.exe");
+            string exe = Path.Combine(RunDir, "CouchKit.exe");
+            if (!File.Exists(bundled)) { logger.Warn("CouchKit: " + bundled + " not found"); return; }
+
+            var running = Process.GetProcessesByName("CouchKit");
+            var ours = running.Where(p => string.Equals(ImagePath(p), exe, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (running.Length > ours.Length) { logger.Info("CouchKit: already running from elsewhere, leaving it"); return; }
+
+            bool stale = !File.Exists(exe) || FileVersionInfo.GetVersionInfo(exe).FileVersion != FileVersionInfo.GetVersionInfo(bundled).FileVersion;
+            if (!stale && ours.Length > 0) return;
+            if (stale)
+            {
+                foreach (var p in ours) { p.Kill(); p.WaitForExit(5000); }
+                Directory.CreateDirectory(RunDir);
+                File.Copy(bundled, exe, true);
+                logger.Info("CouchKit: installed " + FileVersionInfo.GetVersionInfo(exe).FileVersion + " to " + exe);
+            }
+            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = RunDir });
+            logger.Info("CouchKit: started " + exe);
+        }
+        catch (Exception ex) { logger.Error(ex, "CouchKit: could not start CouchKit.exe"); }
+    }
+
+    static string ImagePath(Process p)
+    {
+        try { return p.MainModule.FileName; } catch { return null; }
+    }
+}

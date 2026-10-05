@@ -1,8 +1,7 @@
 // Lighting: drives every OpenRGB device (via OpenRGB's SDK server) with a flowing gradient.
 //   - Normally: the configured palette, saturated so it reads vivid on LEDs.
-//   - While a Playnite game runs: colours picked from that game's art (Playnite's "after game
-//     started" script writes the image path to current-game-art.txt), or the palette if the art
-//     has no strong colours.
+//   - While a Playnite game runs: colours picked from that game's art (the Playnite add-on writes
+//     the image path to current-game-art.txt), or the palette if the art has no strong colours.
 // Reconnects whenever OpenRGB is restarted; does nothing while it isn't running.
 using System;
 using System.Collections.Generic;
@@ -21,7 +20,7 @@ static class Lighting
 
     [System.Runtime.InteropServices.DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
 
-    public static readonly string ArtPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "current-game-art.txt");
+    public static readonly string ArtPath = Path.Combine(Settings.DataDir, "current-game-art.txt");
     public static Action<string> Log = _ => { };
 
     public static void Start(LightingSettings settings)

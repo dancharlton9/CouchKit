@@ -1,5 +1,5 @@
-// CouchKit: background helper that makes this PC behave like a TV console around Playnite
-// fullscreen, while Apollo/Moonlight remote management uses its own virtual display.
+// CouchKit: background helper that makes a PC behave like a TV console around Playnite
+// fullscreen, while Sunshine/Apollo + Moonlight remote sessions use their own virtual display.
 //
 // Controller:
 //   Hold Back + Start   close the running game: the one Playnite reports it started (via
@@ -9,16 +9,18 @@
 //                       Playnite, Explorer, Steam and Apollo are never touched.
 //   Tap Xbox button     game -> Playnite library; anything else -> the running game, or Playnite.
 //
-// TV vs virtual display (a stream makes Apollo's virtual display primary):
+// TV vs virtual display (a stream makes the host's virtual display primary):
 //   - Playnite is kept on the TV, or minimised while no physical screen is active.
 //   - The running Playnite game is kept on the TV the same way.
-//   - Playnite is muted while a stream is connected, and brought to the front when it ends.
+//   - Playnite and the game are muted while a stream is connected; afterwards the game (or
+//     Playnite) is brought to the front.
 //   - Sound output is switched back to the TV when it is the only screen.
-//   - The TV is kept at its native 3840x2160 @ 120 Hz whenever the set of screens changes.
+//   - The TV is put back to its configured mode whenever the set of screens changes.
 //
 // Lighting (Lighting.cs): a flowing palette on every OpenRGB device, themed to the game's art in game.
 //
-// Every feature can be switched off or tuned in couchkit.json next to the exe (Settings.cs).
+// Every feature can be switched off or tuned in %APPDATA%\CouchKit\couchkit.json (Settings.cs).
+// The Playnite add-on (playnite\) starts CouchKit with Playnite and reports the running game.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -284,13 +286,13 @@ static class CouchKit
             || S.Games.ProtectedProcesses.Any(p => string.Equals(p.Replace(".exe", ""), name, StringComparison.OrdinalIgnoreCase));
     }
 
-    static readonly string LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CouchKit.log");
+    static readonly string LogPath = Path.Combine(Settings.DataDir, "CouchKit.log");
 
     static void Main(string[] args)
     {
         if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
         {
-            File.WriteAllLines(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "palette-test.txt"),
+            File.WriteAllLines(Path.Combine(Settings.DataDir, "palette-test.txt"),
                 args.Skip(1).Select(a => Lighting.Describe(a) + "  " + Path.GetFileName(a)));
             return;
         }
@@ -371,9 +373,9 @@ static class CouchKit
         }
     }
 
-    // Playnite's global "after game started" script writes the game's install folder here and its
-    // "after game exited" script deletes it, so the game can be found wherever focus is.
-    static readonly string CurrentGamePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "current-game.txt");
+    // The CouchKit Playnite add-on writes the game's install folder here when a game starts and
+    // deletes it when the game exits, so the game can be found wherever focus is.
+    static readonly string CurrentGamePath = Path.Combine(Settings.DataDir, "current-game.txt");
 
     [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
