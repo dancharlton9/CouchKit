@@ -7,7 +7,7 @@
 //                       otherwise whatever is in the foreground.
 //                       1.5s -> polite close, short rumble; 4s -> force-kill, long rumble.
 //                       Playnite, Explorer, Steam and Apollo are never touched.
-//   Tap Xbox button     game -> Playnite library, Playnite -> game, otherwise -> Playnite.
+//   Tap Xbox button     game -> Playnite library; anything else -> the running game, or Playnite.
 //
 // TV vs virtual display (a stream makes Apollo's virtual display primary):
 //   - Playnite is kept on the TV, or minimised while no physical screen is active.
@@ -430,7 +430,8 @@ static class CouchKit
             .Select(p => (uint)p.Id).ToArray();
     }
 
-    // Xbox button tap, console "Home" style: game -> Playnite, Playnite -> game, otherwise -> Playnite.
+    // Xbox button tap, console "Home" style: game -> Playnite; anything else -> the game if one is
+    // running, otherwise Playnite.
     static void ToggleGameAndPlaynite()
     {
         var playnite = Process.GetProcessesByName("Playnite.FullscreenApp").FirstOrDefault();
@@ -442,10 +443,12 @@ static class CouchKit
         GetWindowThreadProcessId(GetForegroundWindow(), out fgPid);
         uint[] game = PlayniteGameProcesses();
 
-        if (fgPid == (uint)playnite.Id && game.Length > 0)
+        IntPtr gameWnd = game.Length > 0 ? MainWindowOf(game) : IntPtr.Zero;
+        if (gameWnd != IntPtr.Zero && !game.Contains(fgPid))
         {
-            IntPtr gameWnd = MainWindowOf(game);
-            if (gameWnd != IntPtr.Zero) { BringToFront(gameWnd); Log("Xbox button: back to game"); }
+            // From Playnite, or from anything else that took focus (e.g. a remote session's window): to the game
+            BringToFront(gameWnd);
+            Log("Xbox button: back to game");
         }
         else if (fgPid != (uint)playnite.Id)
         {
