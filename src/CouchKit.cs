@@ -627,7 +627,14 @@ static class CouchKit
         if (focusPlayniteAt.HasValue && DateTime.Now >= focusPlayniteAt.Value)
         {
             focusPlayniteAt = null;
-            if (!hasVirtual && !IsIconic(hwnd))
+            // A running game gets the focus back instead, so the controller keeps working in it.
+            IntPtr gameWnd = MainWindowOf(PlayniteGameProcesses());
+            if (!hasVirtual && gameWnd != IntPtr.Zero)
+            {
+                BringToFront(gameWnd);
+                Log("Focused the running game " + ProcessLabel(WindowPid(gameWnd)) + ", audio output: " + DefaultAudioDeviceName());
+            }
+            else if (!hasVirtual && !IsIconic(hwnd))
             {
                 // Windows only lets the process with the latest input change the foreground
                 // window; a synthetic Alt press satisfies that.
