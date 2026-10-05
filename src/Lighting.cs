@@ -107,9 +107,14 @@ static class Lighting
                 BitConverter.GetBytes((uint)buf.Length).CopyTo(buf, 0);
                 BitConverter.GetBytes((ushort)total).CopyTo(buf, 4);
                 int o = 6;
-                foreach (int n in devices[d])
+                for (int z = 0; z < devices[d].Length; z++)
+                {
+                    // Each zone of a device (e.g. each fan channel) lags the one before, so they don't all show the same colour at once
+                    int n = devices[d][z];
+                    double zonePhase = phase + z * L.ZoneOffset + 1;
                     for (int i = 0; i < n; i++, o += 4)
-                        wheel[(int)(((double)i / n * L.Span + phase) % 1 * (WheelSize - 1))].CopyTo(buf, o);
+                        wheel[(int)(((double)i / n * L.Span + zonePhase) % 1 * (WheelSize - 1))].CopyTo(buf, o);
+                }
                 Send(ns, d, 1050, buf);   // UpdateLEDs
             }
             Thread.Sleep(Math.Max(1, (int)(1000 / Math.Max(1, L.Fps) - (clock.ElapsedMilliseconds - now))));

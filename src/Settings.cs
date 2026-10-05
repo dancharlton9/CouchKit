@@ -105,10 +105,11 @@ class LightingSettings
     public double GameCycleSeconds { get; set; }
     public int Fps { get; set; }
     public double Span { get; set; }                 // share of the colour loop across one device: lower = gentler
+    public double ZoneOffset { get; set; }           // how far each zone of a device (e.g. each fan channel) lags the previous one, as a share of the loop
     public LightingSettings()
     {
         Enabled = true; OpenRgbHost = "127.0.0.1"; OpenRgbPort = 6742;
         Palette = new[] { "#75dddd", "#84c7d0", "#9297c4", "#9368b7", "#aa3e98" };
-        GameColours = true; BrowseCycleSeconds = 9; GameCycleSeconds = 7; Fps = 30; Span = 0.5;
+        GameColours = true; BrowseCycleSeconds = 9; GameCycleSeconds = 7; Fps = 30; Span = 0.5; ZoneOffset = 0.25;
     }
 }

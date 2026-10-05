@@ -32,6 +32,7 @@
     "BrowseCycleSeconds": 9,
     "GameCycleSeconds": 7,
     "Fps": 30,
-    "Span": 0.5
+    "Span": 0.5,
+    "ZoneOffset": 0.25
   }
 }
