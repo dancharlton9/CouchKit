@@ -2,6 +2,7 @@
 // tells it which game is running by writing two files to %APPDATA%\CouchKit:
 //   current-game.txt      the game's install folder (CouchKit treats processes run from it as the game)
 //   current-game-art.txt  the full path of the game's background image, or its cover if it has none
+//   current-game-name.txt the game's name
 // Both are deleted when the game exits.
 using System;
 using System.Diagnostics;
@@ -20,6 +21,7 @@ public class CouchKitPlugin : GenericPlugin
     static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CouchKit");
     static readonly string GamePath = Path.Combine(DataDir, "current-game.txt");
     static readonly string ArtPath = Path.Combine(DataDir, "current-game-art.txt");
+    static readonly string NamePath = Path.Combine(DataDir, "current-game-name.txt");
 
     static readonly Guid PluginId = Guid.Parse("6f0c6a51-8d0b-4c41-9a38-2b1f4f6d7c11");
     public override Guid Id { get { return PluginId; } }
@@ -42,6 +44,7 @@ public class CouchKitPlugin : GenericPlugin
         try
         {
             Directory.CreateDirectory(DataDir);
+            File.WriteAllText(NamePath, game.Name ?? "");
             File.WriteAllText(GamePath, game.InstallDirectory ?? "");
             string art = new[] { game.BackgroundImage, game.CoverImage }.FirstOrDefault(a => !string.IsNullOrEmpty(a));
             string artPath = art == null ? null : PlayniteApi.Database.GetFullFilePath(art);
@@ -65,6 +68,7 @@ public class CouchKitPlugin : GenericPlugin
     {
         DeleteFile(GamePath);
         DeleteFile(ArtPath);
+        DeleteFile(NamePath);
     }
 
     static void DeleteFile(string path)
@@ -104,8 +108,23 @@ public class CouchKitPlugin : GenericPlugin
         catch (Exception ex) { logger.Error(ex, "CouchKit: could not start CouchKit.exe"); }
     }
 
+    // Playnite is 32-bit and CouchKit 64-bit, so Process.MainModule can't read CouchKit's path;
+    // QueryFullProcessImageName works across that boundary.
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern bool QueryFullProcessImageName(IntPtr process, uint flags, System.Text.StringBuilder name, ref int size);
+
     static string ImagePath(Process p)
     {
-        try { return p.MainModule.FileName; } catch { return null; }
+        IntPtr h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, p.Id);
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            var sb = new System.Text.StringBuilder(1024);
+            int size = sb.Capacity;
+            return QueryFullProcessImageName(h, 0, sb, ref size) ? sb.ToString() : null;
+        }
+        finally { CloseHandle(h); }
     }
 }

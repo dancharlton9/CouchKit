@@ -18,6 +18,8 @@
 //   - The TV is put back to its configured mode whenever the set of screens changes.
 //
 // Lighting (Lighting.cs): a flowing palette on every OpenRGB device, themed to the game's art in game.
+// Smart home (SmartHome.cs): the game's colours sent to a webhook (e.g. Home Assistant) and animated
+// on Nanoleaf panels.
 //
 // Every feature can be switched off or tuned in %APPDATA%\CouchKit\couchkit.json (Settings.cs).
 // The Playnite add-on (playnite\) starts CouchKit with Playnite and reports the running game.
@@ -309,6 +311,8 @@ static class CouchKit
                 Lighting.Log = Log;
                 Lighting.Start(S.Lighting);
             }
+            SmartHome.Log = Log;
+            SmartHome.Start(S.SmartHome, S.Lighting);
 
             var held = new Stopwatch[4];
             var stage = new int[4];

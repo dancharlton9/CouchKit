@@ -202,7 +202,7 @@ static class Lighting
     }
 
     // Same hue at full saturation and brightness: pastels look washed out on LEDs.
-    static int[] Vivid(string hex)
+    internal static int[] Vivid(string hex)
     {
         var c = ColorTranslator.FromHtml(hex);
         return FromHue(c.GetHue());
@@ -230,7 +230,7 @@ static class Lighting
     // Up to three dominant hues from the image's colourful pixels (greys, blacks and whites ignored),
     // ordered round the colour wheel so the gradient between them stays smooth. Null if the art is
     // too colourless to say anything.
-    static List<int[]> PaletteFromImage(string path)
+    internal static List<int[]> PaletteFromImage(string path)
     {
         try
         {

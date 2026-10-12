@@ -11,6 +11,7 @@ class Settings
     public AudioSettings Audio { get; set; }
     public GameSettings Games { get; set; }
     public LightingSettings Lighting { get; set; }
+    public SmartHomeSettings SmartHome { get; set; }
 
     public Settings()
     {
@@ -19,6 +20,7 @@ class Settings
         Audio = new AudioSettings();
         Games = new GameSettings();
         Lighting = new LightingSettings();
+        SmartHome = new SmartHomeSettings();
     }
 
     // Settings, log and the running-game files the Playnite add-on writes all live here, outside
@@ -46,6 +48,7 @@ class Settings
             if (s.Audio == null) s.Audio = new AudioSettings();
             if (s.Games == null) s.Games = new GameSettings();
             if (s.Lighting == null) s.Lighting = new LightingSettings();
+            if (s.SmartHome == null) s.SmartHome = new SmartHomeSettings();
             note = "settings from " + FilePath;
             return s;
         }
@@ -122,4 +125,16 @@ class LightingSettings
         Palette = new[] { "#75dddd", "#84c7d0", "#9297c4", "#9368b7", "#aa3e98" };
         GameColours = true; BrowseCycleSeconds = 9; GameCycleSeconds = 7; Fps = 30; Span = 0.5; ZoneOffset = 0.25;
     }
+}
+
+class SmartHomeSettings
+{
+    // POSTed on game start/stop, e.g. a Home Assistant webhook. Empty = off. Body:
+    //   {"event":"game_start","game":"<name>","colors":[[r,g,b],...]}   or   {"event":"game_stop"}
+    public string WebhookUrl { get; set; }
+    // Nanoleaf panels to animate in the game's colours (address and API token). Empty = off.
+    public string NanoleafHost { get; set; }
+    public string NanoleafToken { get; set; }
+    public int NanoleafTransitionTime { get; set; }   // Flow speed, in tenths of a second per step
+    public SmartHomeSettings() { WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; }
 }

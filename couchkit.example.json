@@ -34,5 +34,11 @@
     "Fps": 30,
     "Span": 0.5,
     "ZoneOffset": 0.25
+  },
+  "SmartHome": {
+    "WebhookUrl": "",
+    "NanoleafHost": "",
+    "NanoleafToken": "",
+    "NanoleafTransitionTime": 24
   }
 }

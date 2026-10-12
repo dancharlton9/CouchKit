@@ -21,6 +21,10 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - Runs a flowing gradient in your colour palette across every RGB device OpenRGB can control: fans, RAM, GPU and motherboard.
 - While a game is running, switches to colours picked from that game's artwork in Playnite.
 
+**Smart home** (optional)
+- Sends the running game's colours to a **webhook**, for example a Home Assistant automation, so the room's lights can match the game and go back afterwards.
+- Plays a **flowing animation in the game's colours on Nanoleaf panels**, then puts back whatever they were showing.
+
 ## Requirements
 
 - Windows 10 or 11, x64.
@@ -97,7 +101,23 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Lighting.ZoneOffset` | `0.25` | How far each zone of a device lags the one before, as a share of the loop. For example, each fan channel on a fan hub, so the fans aren't all the same colour at once. `0` = all in step |
 | `Lighting.OpenRgbHost` / `OpenRgbPort` | `127.0.0.1` / `6742` | Where OpenRGB's SDK server is |
 
+| `SmartHome.WebhookUrl` | empty (off) | URL that receives a POST when a game starts, `{"event":"game_start","game":"<name>","colors":[[r,g,b],...]}`, and when it stops, `{"event":"game_stop"}` |
+| `SmartHome.NanoleafHost` / `NanoleafToken` | empty (off) | IP address and API token of Nanoleaf panels to animate in the game's colours. See below for getting a token |
+| `SmartHome.NanoleafTransitionTime` | `24` | Speed of the Nanoleaf flow, in tenths of a second per step |
+
 To see what colours a game's art would produce, run `CouchKit.exe --palette "path\to\image.jpg"`. The result goes to `%APPDATA%\CouchKit\palette-test.txt`.
+
+## Smart home setup
+
+**Home Assistant.** Create an automation with a **Webhook** trigger, and put its URL (`http://<home-assistant>:8123/api/webhook/<id>`) in `SmartHome.WebhookUrl`. In the automation, `trigger.json.event` is `game_start` or `game_stop`, and `trigger.json.colors` is a list of `[r, g, b]` colours. A good pattern:
+- **On `game_start`:** `scene.create` a snapshot of the room's lights (only if one doesn't exist yet, so switching games keeps the original), then `light.turn_on` each light with `rgb_color: "{{ trigger.json.colors[0] }}"` and so on.
+- **On `game_stop`:** `scene.turn_on` the snapshot, then `scene.delete` it.
+
+**Nanoleaf.** Find the controller's IP address in your router or the Nanoleaf app. Hold its power button for 5–7 seconds until the light flashes, then within 30 seconds run:
+```powershell
+Invoke-RestMethod -Method Post http://<nanoleaf-ip>:16021/api/v1/new
+```
+Put the returned `auth_token` in `SmartHome.NanoleafToken`, and the IP address in `SmartHome.NanoleafHost`. If Home Assistant also controls the panels, leave them out of the webhook automation, so the two don't compete.
 
 ## How it decides what "the game" is
 
