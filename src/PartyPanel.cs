@@ -1,8 +1,9 @@
 // Party panel: an Xbox-guide-style Discord menu on the TV, driven by the controller.
-//   Back + Y opens/closes it; D-pad up/down moves, A selects, B closes.
-// Lists the Discord favourites from couchkit.json (call a friend / join a voice channel), plus
+//   Double-tap the Xbox button to open/close it; D-pad up/down moves, A selects, B goes back.
+// Lists the Discord favourites from couchkit.json, then Chats (recent DMs and group chats, read
+// live from Discord) and Voice channels (server, then channel), plus
 // mute, deafen, leave and "Open Discord" (mouse mode). Also shows an incoming-call banner, without
-// taking the focus, that says to hold Back + A to answer.
+// taking the focus, that says to double-tap the Xbox button to answer.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -14,12 +15,17 @@ using System.Windows.Forms;
 
 static class PartyPanel
 {
-    class Item { public string Text; public Func<string> Action; public bool CloseAfter; }
+    // An entry runs an Action on the Discord thread, or opens a sub-menu whose entries are loaded
+    // from Discord (chats, servers, voice channels).
+    class Item { public string Text; public Func<string> Action; public bool CloseAfter; public Func<List<Item>> Submenu; public Color? Dot; }
+    class Level { public string Title; public List<Item> Items; public int Selected; }
 
     static Form panel, banner;
     static Control ui;   // for marshalling onto the UI thread
     static List<Item> items = new List<Item>();
-    static int selected;
+    static int selected, firstVisible;
+    static string title = "Party";
+    static readonly Stack<Level> parents = new Stack<Level>();   // empty = main menu
     static string message = "";
     static IntPtr returnTo;
     static DiscordSettings S = new DiscordSettings();
@@ -62,7 +68,9 @@ static class PartyPanel
     {
         returnTo = GetForegroundWindow();
         message = "";
-        selected = 0;
+        selected = firstVisible = 0;
+        parents.Clear();
+        title = "Party";
         IsOpen = true;
         OnUi(() =>
         {
@@ -86,20 +94,59 @@ static class PartyPanel
         OnUi(() => { if (items.Count == 0) return; selected = (selected + delta + items.Count) % items.Count; panel.Invalidate(); });
     }
 
+    // B: back out of a sub-menu, or close from the main menu
+    public static void GoBack()
+    {
+        OnUi(() =>
+        {
+            if (parents.Count == 0) { Close(); return; }
+            var up = parents.Pop();
+            title = up.Title; items = up.Items; selected = up.Selected; firstVisible = 0;
+            message = "";
+            if (parents.Count == 0) Rebuild();
+            panel.Invalidate();
+        });
+    }
+
+    static void OpenSubmenu(Item item)
+    {
+        parents.Push(new Level { Title = title, Items = items, Selected = selected });
+        title = item.Text.TrimEnd(' ', '›');
+        items = new List<Item> { new Item { Text = "Loading…" } };
+        selected = firstVisible = 0;
+        message = "";
+        panel.Invalidate();
+        var loader = item.Submenu;
+        var level = items;
+        DiscordBridge.Do(() =>
+        {
+            var loaded = loader();
+            OnUi(() =>
+            {
+                if (items != level) return;   // backed out while loading
+                items = loaded.Count > 0 ? loaded : new List<Item> { new Item { Text = "Nothing found" } };
+                selected = 0;
+                panel.Invalidate();
+            });
+            return "";
+        }, null);
+    }
+
     public static void Select()
     {
         OnUi(() =>
         {
             if (selected >= items.Count) return;
             var item = items[selected];
-            if (item.Action == null) { Close(); return; }
+            if (item.Submenu != null) { OpenSubmenu(item); return; }
+            if (item.Action == null) { if (parents.Count == 0) Close(); return; }
             message = "…";
             panel.Invalidate();
             bool close = item.CloseAfter;
             DiscordBridge.Do(item.Action, msg => OnUi(() =>
             {
                 message = msg != null ? msg.Replace("Discord: ", "") : "";
-                Rebuild();
+                if (parents.Count == 0) Rebuild();
                 panel.Invalidate();
                 if (close && msg != null && !msg.Contains("not found") && !msg.Contains("isn't") && !msg.Contains("couldn't")) Close();
             }));
@@ -120,6 +167,8 @@ static class PartyPanel
                 list.Add(new Item { Text = "Join " + (fav.Label ?? fav.Channel), Action = () => DiscordBridge.JoinVoice(fav.Server, fav.Channel), CloseAfter = true });
         }
         if (DiscordBridge.Incoming) list.Insert(0, new Item { Text = "Answer call" + (DiscordBridge.IncomingFrom.Length > 0 ? " from " + DiscordBridge.IncomingFrom : ""), Action = DiscordBridge.Answer, CloseAfter = true });
+        list.Add(new Item { Text = "Chats ›", Submenu = ChatsMenu });
+        list.Add(new Item { Text = "Voice channels ›", Submenu = ServersMenu });
         list.Add(new Item { Text = DiscordBridge.Muted ? "Unmute microphone" : "Mute microphone", Action = DiscordBridge.ToggleMute });
         list.Add(new Item { Text = DiscordBridge.Deafened ? "Undeafen" : "Deafen", Action = DiscordBridge.ToggleDeafen });
         if (DiscordBridge.InCall) list.Add(new Item { Text = "Leave call", Action = DiscordBridge.Leave });
@@ -131,10 +180,53 @@ static class PartyPanel
         selected = keep >= 0 ? keep : Math.Min(selected, items.Count - 1);
     }
 
+    // Sub-menus, loaded live from Discord on its thread
+    static List<Item> ChatsMenu()
+    {
+        return DiscordBridge.ListChats().Select(c =>
+        {
+            string name = c.Name;
+string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "";
+            return new Item { Text = "Call " + name + (c.Group ? "  (group" + (c.Members > 0 ? ", " + c.Members : "") + ")" : status), Action = () => DiscordBridge.CallFriend(name), CloseAfter = true, Dot = StatusColour(c.Status) };
+        }).ToList();
+    }
+
+    // Discord's own status colours
+    static Color? StatusColour(string status)
+    {
+        switch (status)
+        {
+            case "Online": return Color.FromArgb(35, 165, 90);
+            case "Streaming": return Color.FromArgb(89, 54, 149);
+            case "Idle": return Color.FromArgb(240, 178, 50);
+            case "Do Not Disturb": return Color.FromArgb(242, 63, 67);
+            case "Offline": case "Invisible": return Color.FromArgb(128, 132, 142);
+            default: return null;
+        }
+    }
+
+    static List<Item> ServersMenu()
+    {
+        return DiscordBridge.ListServers().Select(s =>
+        {
+            string server = s;
+            return new Item { Text = server + " ›", Submenu = () => ChannelsMenu(server) };
+        }).ToList();
+    }
+
+    static List<Item> ChannelsMenu(string server)
+    {
+        return DiscordBridge.ListVoiceChannels(server).Select(ch =>
+        {
+            string channel = ch;
+            return new Item { Text = "Join " + channel, Action = () => DiscordBridge.JoinVoice(server, channel), CloseAfter = true };
+        }).ToList();
+    }
+
     static bool lastIncoming;
     static void Tick()
     {
-        if (IsOpen) { Rebuild(); panel.Invalidate(); }
+        if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); }
         bool incoming = DiscordBridge.Incoming;
         if (incoming && !banner.Visible)
         {
@@ -159,14 +251,15 @@ static class PartyPanel
         int unit = size.Height / 40;   // scales with the TV's resolution
         using (var accent = new LinearGradientBrush(new Point(0, 0), new Point(0, size.Height), Aqua, Magenta))
             g.FillRectangle(accent, size.Width - unit / 3, 0, unit / 3, size.Height);
-        using (var title = new Font("Segoe UI Semibold", unit * 1.6f, GraphicsUnit.Pixel))
+        using (var titleFont = new Font("Segoe UI Semibold", unit * 1.6f, GraphicsUnit.Pixel))
         using (var body = new Font("Segoe UI", unit * 1.05f, GraphicsUnit.Pixel))
         using (var small = new Font("Segoe UI", unit * 0.75f, GraphicsUnit.Pixel))
         using (var text = new SolidBrush(Text))
         using (var dim = new SolidBrush(Dim))
         {
             int x = unit * 2, y = unit * 2;
-            g.DrawString("Party", title, text, x, y);
+            var titleBox = new RectangleF(x, y, size.Width - x * 2, unit * 2.4f);
+            g.DrawString(title, titleFont, text, titleBox, new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap });
             y += unit * 3;
             string status = DiscordBridge.Incoming ? "Incoming call" + (DiscordBridge.IncomingFrom.Length > 0 ? " from " + DiscordBridge.IncomingFrom : "")
                           : !DiscordBridge.Running ? "Discord isn't running"
@@ -174,8 +267,14 @@ static class PartyPanel
                           : "Not in a call";
             g.DrawString(status, small, dim, x, y);
             y += unit * 2;
-            int rowH = (int)(unit * 2.2);
-            for (int i = 0; i < items.Count; i++)
+            int rowH = (int)(unit * 2.2), step = rowH + unit / 4;
+            // Scroll so the selection stays visible; leave room for the message and button hints
+            int visible = Math.Max(1, (size.Height - y - unit * 7) / step);
+            if (selected < firstVisible) firstVisible = selected;
+            if (selected >= firstVisible + visible) firstVisible = selected - visible + 1;
+            if (firstVisible > 0) g.DrawString("▲", small, dim, size.Width - x * 2, y - unit * 1.5f);
+            var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+            for (int i = firstVisible; i < items.Count && i < firstVisible + visible; i++)
             {
                 var r = new Rectangle(x - unit / 2, y, size.Width - x * 2, rowH);
                 if (i == selected)
@@ -183,11 +282,19 @@ static class PartyPanel
                     using (var card = new SolidBrush(Card)) g.FillRectangle(card, r);
                     using (var edge = new LinearGradientBrush(r, Aqua, Magenta, LinearGradientMode.Vertical)) g.FillRectangle(edge, r.Left, r.Top, unit / 4, r.Height);
                 }
-                g.DrawString(items[i].Text, body, i == selected ? text : dim, x + unit / 2, y + (rowH - body.Height) / 2);
-                y += rowH + unit / 4;
+                int textX = x + unit / 2;
+                if (items[i].Dot.HasValue)
+                {
+                    int d = (int)(unit * 0.7);
+                    using (var dot = new SolidBrush(items[i].Dot.Value)) g.FillEllipse(dot, textX, y + (rowH - d) / 2, d, d);
+                    textX += d + unit / 2;
+                }
+                g.DrawString(items[i].Text, body, i == selected ? text : dim, new RectangleF(textX, y + (rowH - body.Height) / 2, r.Right - textX - unit / 2, body.Height * 1.3f), noWrap);
+                y += step;
             }
+            if (firstVisible + visible < items.Count) g.DrawString("▼", small, dim, size.Width - x * 2, y);
             if (message.Length > 0) g.DrawString(message, small, dim, new RectangleF(x, size.Height - unit * 6, size.Width - x * 2, unit * 3));
-            g.DrawString("A  select     B  close     D-pad  move", small, dim, x, size.Height - unit * 2.5f);
+            g.DrawString("A  select     B  back     D-pad  move", small, dim, x, size.Height - unit * 2.5f);
         }
     }
 
@@ -204,7 +311,7 @@ static class PartyPanel
         {
             string who = DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call";
             g.DrawString(who, big, text, unit, unit * 0.4f);
-            g.DrawString("Hold Back + A to answer  ·  Back + B to decline", small, dim, unit, unit * 1.9f);
+            g.DrawString("Double-tap the Xbox button to answer", small, dim, unit, unit * 1.9f);
         }
     }
 

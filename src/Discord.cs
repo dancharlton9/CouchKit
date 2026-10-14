@@ -125,14 +125,105 @@ static class DiscordBridge
         return "Discord: " + (button == "Mute" ? (on ? "microphone muted" : "microphone live") : (on ? "deafened" : "undeafened"));
     }
 
+    // Recent chats from Discord's direct messages list: friends and group chats, newest first.
+    public class Chat { public string Name; public bool Group; public int Members; public string Status = ""; }
+
+    // A friend's avatar is labelled "<username>, Online" (or Idle, Do Not Disturb, Offline, ...)
+    static readonly Regex StatusLabel = new Regex(@", (?<status>Online|Idle|Do Not Disturb|Offline|Streaming|Invisible)$", RegexOptions.IgnoreCase);
+
+    static string StatusNear(AutomationElement link)
+    {
+        try
+        {
+            var parent = TreeWalker.ControlViewWalker.GetParent(link);
+            for (int i = 0; i < 2 && parent != null; i++)
+            {
+                foreach (AutomationElement img in parent.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Image)))
+                {
+                    var m = StatusLabel.Match(img.Current.Name);
+                    if (m.Success) return m.Groups["status"].Value;
+                }
+                parent = TreeWalker.ControlViewWalker.GetParent(parent);
+            }
+        }
+        catch { }
+        return "";
+    }
+
+    static readonly Regex ChatLink = new Regex(@"^(?<name>.+?) \((?<kind>direct|group) message\)(, (?<members>\d+) Members)?", RegexOptions.IgnoreCase);
+
+    public static List<Chat> ListChats()
+    {
+        var main = MainWindow(true);
+        var chats = new List<Chat>();
+        if (main == null) return chats;
+        GoToDirectMessages(main);
+        WaitFor(main, ControlType.Hyperlink, ChatLink, 3000);
+        foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Hyperlink)))
+        {
+            var m = ChatLink.Match(e.Current.Name);
+            if (!m.Success) continue;
+            int members; int.TryParse(m.Groups["members"].Value, out members);
+            string name = m.Groups["name"].Value;
+            if (chats.Any(c => c.Name == name)) continue;
+            bool group = m.Groups["kind"].Value.Equals("group", StringComparison.OrdinalIgnoreCase);
+            chats.Add(new Chat { Name = name, Group = group, Members = members, Status = group ? "" : StatusNear(e) });
+        }
+        // People who are around first (keeping Discord's most-recent order within each group)
+        Func<Chat, int> rank = c => c.Group ? 1 : c.Status == "Online" || c.Status == "Streaming" ? 0 : c.Status == "Idle" || c.Status == "Do Not Disturb" ? 1 : 2;
+        return chats.Select((c, i) => new { c, i }).OrderBy(x => rank(x.c)).ThenBy(x => x.i).Select(x => x.c).ToList();
+    }
+
+    // Servers in Discord's sidebar, with the notification prefixes and suffixes removed.
+    public static List<string> ListServers()
+    {
+        var main = MainWindow(true);
+        var servers = new List<string>();
+        if (main == null) return servers;
+        foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem)))
+        {
+            string n = e.Current.Name;
+            if (n.StartsWith("Direct Messages") || n == "Add a Server" || n == "Discover" || n.Contains(", folder ")) continue;
+            n = Regex.Replace(n, @"^((\d+ mentions?|Unread messages), )+", "");
+            n = Regex.Replace(n, @"(, (Scheduled event|Live|Live stage|Voice channel active|\d+ unread))+$", "");
+            if (n.Length > 0 && !servers.Contains(n)) servers.Add(n);
+        }
+        return servers;
+    }
+
+    public static List<string> ListVoiceChannels(string server)
+    {
+        var main = MainWindow(true);
+        var channels = new List<string>();
+        if (main == null || !SelectServer(main, server)) return channels;
+        var voice = new Regex(@"^(?<name>.+?) \(voice channel\)", RegexOptions.IgnoreCase);
+        WaitFor(main, ControlType.Button, voice, 3000);
+        foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+        {
+            var m = voice.Match(e.Current.Name);
+            if (m.Success && !channels.Contains(m.Groups["name"].Value)) channels.Add(m.Groups["name"].Value);
+        }
+        return channels;
+    }
+
+    static bool SelectServer(AutomationElement main, string server)
+    {
+        var srv = main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem))
+            .Cast<AutomationElement>().FirstOrDefault(e => Regex.IsMatch(e.Current.Name, @"(^|, )" + Regex.Escape(server) + @"($|,)", RegexOptions.IgnoreCase));
+        if (srv == null) return false;
+        ((SelectionItemPattern)srv.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        return true;
+    }
+
+    // Starts a voice call in a DM or group chat (everyone in a group chat is rung).
     public static string CallFriend(string friend)
     {
         var main = MainWindow(true);
         if (main == null) return "Discord isn't running";
         if (InCall) Leave();
         GoToDirectMessages(main);
-        var link = WaitFor(main, ControlType.Hyperlink, new Regex("^" + Regex.Escape(friend) + @".*\(direct message\)$", RegexOptions.IgnoreCase), 3000);
-        if (link == null) return "Discord: no recent DM with " + friend + " (open a chat with them once in Discord)";
+        var link = WaitFor(main, ControlType.Hyperlink, new Regex("^" + Regex.Escape(friend) + @" \((direct|group) message\)", RegexOptions.IgnoreCase), 3000);
+        if (link == null) return "Discord: no recent chat with " + friend + " (open a chat with them once in Discord)";
         ((InvokePattern)link.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         var call = WaitFor(main, ControlType.Button, new Regex("^Start Voice Call$"), 4000);
         if (call == null) return "Discord: couldn't find Start Voice Call for " + friend;
@@ -144,10 +235,7 @@ static class DiscordBridge
     {
         var main = MainWindow(true);
         if (main == null) return "Discord isn't running";
-        var srv = main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem))
-            .Cast<AutomationElement>().FirstOrDefault(e => Regex.IsMatch(e.Current.Name, @"(^|, )" + Regex.Escape(server) + @"($|,)", RegexOptions.IgnoreCase));
-        if (srv == null) return "Discord: server " + server + " not found";
-        ((SelectionItemPattern)srv.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        if (!SelectServer(main, server)) return "Discord: server " + server + " not found";
         var ch = WaitFor(main, ControlType.Button, new Regex("^" + Regex.Escape(channel) + @" \(voice channel\)", RegexOptions.IgnoreCase), 4000);
         if (ch == null) return "Discord: voice channel " + channel + " not found in " + server;
         ((InvokePattern)ch.GetCurrentPattern(InvokePattern.Pattern)).Invoke();

@@ -8,7 +8,7 @@
 //                       1.5s -> polite close, short rumble; 4s -> force-kill, long rumble.
 //                       Playnite, Explorer, Steam and Apollo are never touched.
 //   Tap Xbox button     game -> Playnite library; anything else -> the running game, or Playnite.
-//   Back + Y / RB / LB  open Discord / mouse mode / Discord mute (Controller.cs).
+//   Double-tap Xbox button   Party panel: Discord calls, mute, answer, hang up, mouse mode (PartyPanel.cs).
 //
 // TV vs virtual display (a stream makes the host's virtual display primary):
 //   - Playnite is kept on the TV, or minimised while no physical screen is active.
@@ -306,6 +306,7 @@ static class CouchKit
     }
 
     const ushort Start = 0x0010, Back = 0x0020, Combo = Start | Back, Guide = 0x0400;
+    const int DoubleTapMs = 350;
     const uint WM_CLOSE = 0x0010;
 
     static readonly string[] BuiltInProtected = {
@@ -353,6 +354,7 @@ static class CouchKit
             var stage = new int[4];
             var target = new uint[4][];
             var guideHeld = new Stopwatch[4];
+            var pendingTap = new Stopwatch[4];
             var displayCheck = Stopwatch.StartNew();
 
             while (true)
@@ -375,17 +377,31 @@ static class CouchKit
                     XState s;
                     bool connected = XInputGetState(i, out s) == 0;
 
+                    // Xbox button: a tap switches game/Playnite (or closes the Party panel); a double tap
+                    // opens the Party panel (or leaves mouse mode). A single tap waits briefly to be sure.
                     bool guide = connected && (s.Pad.Buttons & Guide) != 0;
                     if (guide && guideHeld[i] == null) guideHeld[i] = Stopwatch.StartNew();
                     else if (!guide && guideHeld[i] != null)
                     {
                         bool tap = guideHeld[i].ElapsedMilliseconds <= S.Controller.GuideTapMaxMs;
                         guideHeld[i] = null;
-                        if (tap && S.Controller.GuideButton)
+                        if (tap && pendingTap[i] != null && pendingTap[i].ElapsedMilliseconds <= DoubleTapMs)
                         {
-                            try { ToggleGameAndPlaynite(); }
-                            catch (Exception ex) { Log("Xbox button action failed: " + ex.Message); }
+                            pendingTap[i] = null;
+                            try { PadExtras.DoubleTap(i, S.Controller); }
+                            catch (Exception ex) { Log("Xbox button double tap failed: " + ex.Message); }
                         }
+                        else if (tap) pendingTap[i] = Stopwatch.StartNew();
+                    }
+                    if (pendingTap[i] != null && pendingTap[i].ElapsedMilliseconds > DoubleTapMs && guideHeld[i] == null)
+                    {
+                        pendingTap[i] = null;
+                        try
+                        {
+                            if (PartyPanel.IsOpen) PartyPanel.Close();
+                            else if (S.Controller.GuideButton) ToggleGameAndPlaynite();
+                        }
+                        catch (Exception ex) { Log("Xbox button action failed: " + ex.Message); }
                     }
 
                     try { PadExtras.Handle(i, connected, S.Controller, s.Pad.Buttons, s.Pad.LX, s.Pad.LY, s.Pad.RY); }

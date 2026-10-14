@@ -1,12 +1,10 @@
-// Controller extras for Discord and desktop apps from the couch:
-//   Back + Y    open/close the Party panel (Discord favourites, mute, deafen, leave)
-//   Back + LB   Discord mute/unmute (Discord's own mute, so in-game voice chat is untouched).
-//               One long buzz = muted, two short = live.
-//   Back + A    answer an incoming Discord call
-//   Back + B    leave the Discord call (or decline an incoming one)
-//   Back + RB   mouse mode on/off: left stick moves the pointer, A clicks, B right-clicks,
-//               right stick scrolls
-// Each fires once per press. Back + Start stays the quit-game combo.
+// Controller extras for Discord and desktop apps from the couch. No button combos: Playnite and
+// games see every normal button, so anything held with them would leak through (Y opens Playnite's
+// search keyboard, Back its menu). Instead:
+//   Double-tap the Xbox button   open/close the Party panel (CouchKit.cs detects the double tap).
+//                                It takes the focus, so D-pad/A/B go to the panel and nothing else.
+//   Mouse mode (started from the panel): left stick moves the pointer, A clicks, B right-clicks,
+//                                right stick scrolls; double-tap the Xbox button to leave it.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -16,7 +14,7 @@ using System.Threading;
 
 static class PadExtras
 {
-    const ushort Up = 0x0001, Down = 0x0002, Back = 0x0020, LB = 0x0100, RB = 0x0200, A = 0x1000, B = 0x2000, Y = 0x8000;
+    const ushort Up = 0x0001, Down = 0x0002, A = 0x1000, B = 0x2000;
     static readonly ushort[] last = new ushort[4];
     static bool mouseMode;
     static double subX, subY;
@@ -26,10 +24,13 @@ static class PadExtras
         PartyPanel.EnterMouseMode = () => { ShowDiscord(); mouseMode = true; CouchKit.Log("Mouse mode on"); };
     }
 
-    static void Buzz(int pad, bool longBuzz)
+    // Double tap of the Xbox button: leaves mouse mode, otherwise opens/closes the Party panel
+    public static void DoubleTap(int pad, ControllerSettings s)
     {
-        if (longBuzz) CouchKit.Rumble(pad, 350);
-        else ThreadPool.QueueUserWorkItem(_ => { CouchKit.Rumble(pad, 70); Thread.Sleep(200); CouchKit.Rumble(pad, 70); });
+        if (mouseMode) { mouseMode = false; CouchKit.Log("Mouse mode off"); CouchKit.Rumble(pad, 60); return; }
+        if (!s.DiscordButtons) return;
+        PartyPanel.Toggle();
+        CouchKit.Rumble(pad, 60);
     }
 
     [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, int data, UIntPtr extra);
@@ -40,39 +41,19 @@ static class PadExtras
         if (!connected) { last[pad] = 0; return; }
         ushort was = last[pad];
         last[pad] = buttons;
-        Func<ushort, bool> pressed = combo => (buttons & combo) == combo && (was & combo) != combo;
+        Func<ushort, bool> pressed = b => (buttons & b) != 0 && (was & b) == 0;
 
-        if (s.MouseMode && pressed((ushort)(Back | RB)))
-        {
-            mouseMode = !mouseMode;
-            CouchKit.Rumble(pad, mouseMode ? 120 : 60);
-            CouchKit.Log("Mouse mode " + (mouseMode ? "on" : "off"));
-        }
-        if (s.DiscordButtons)
-        {
-            int p = pad;
-            if (pressed((ushort)(Back | Y))) { PartyPanel.Toggle(); CouchKit.Rumble(p, 60); return; }
-            if (pressed((ushort)(Back | LB)))
-                DiscordBridge.Do(DiscordBridge.ToggleMute, msg => Buzz(p, DiscordBridge.Muted));
-            if (pressed((ushort)(Back | A)))
-                DiscordBridge.Do(DiscordBridge.Answer, msg => CouchKit.Rumble(p, 120));
-            if (pressed((ushort)(Back | B)))
-                DiscordBridge.Do(() => DiscordBridge.Incoming ? DiscordBridge.Decline() : DiscordBridge.Leave(), msg => CouchKit.Rumble(p, 120));
-        }
-
-        // The Party panel takes the D-pad, A and B while it's open
+        // The Party panel has the focus while it's open: it takes the D-pad, A and B
         if (PartyPanel.IsOpen)
         {
-            if ((buttons & Back) != 0) return;
             if (pressed(Up)) PartyPanel.Move(-1);
             if (pressed(Down)) PartyPanel.Move(1);
             if (pressed(A)) PartyPanel.Select();
-            if (pressed(B)) PartyPanel.Close();
+            if (pressed(B)) PartyPanel.GoBack();
             return;
         }
 
-        if (!mouseMode || (buttons & Back) != 0) return;   // Back is held for a combo: don't click
-
+        if (!mouseMode) return;
         // Pointer: deadzone, then a curve so small movements are precise and full tilt is fast
         double x = Axis(lx), y = Axis(ly);
         double speed = s.MouseSpeed;
