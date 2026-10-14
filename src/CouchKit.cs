@@ -8,6 +8,7 @@
 //                       1.5s -> polite close, short rumble; 4s -> force-kill, long rumble.
 //                       Playnite, Explorer, Steam and Apollo are never touched.
 //   Tap Xbox button     game -> Playnite library; anything else -> the running game, or Playnite.
+//   Back + Y / RB / LB  open Discord / mouse mode / Discord mute (Controller.cs).
 //
 // TV vs virtual display (a stream makes the host's virtual display primary):
 //   - Playnite is kept on the TV, or minimised while no physical screen is active.
@@ -171,39 +172,63 @@ static class CouchKit
         Log("TV " + tv + " mode " + before + " -> " + tvWidth + "x" + tvHeight + (tvHz > 0 ? "@" + tvHz : "") + (result == 0 ? "" : " FAILED (" + result + ")"));
     }
 
-    static bool? tvAudioWasActive;
+    static bool? tvAudioWasActive, headsetWasActive;
     static bool hadVirtualForAudio;
     static DateTime? switchAudioAt;
 
     // Streaming hosts restore the pre-stream default output when a session ends, and Windows
-    // falls back to another device when the TV is off. Put sound back on the TV when it is the
-    // only screen: at startup, when the TV comes on, and a few seconds after a stream ends.
+    // falls back to another device when the TV is off. Put sound on the right device: the headset
+    // while it's switched on (if one is configured), otherwise the TV. Checked at startup, when
+    // the TV or headset comes or goes, and a few seconds after a stream ends; never during one.
     static void KeepAudioOnTv()
     {
-        string tvAudioName = S.Audio.TvDeviceName;
-        if (string.IsNullOrEmpty(tvAudioName)) return;
+        string tvAudioName = S.Audio.TvDeviceName, headsetName = S.Audio.HeadsetDeviceName;
+        if (string.IsNullOrEmpty(tvAudioName) && string.IsNullOrEmpty(headsetName)) return;
         bool hasVirtual = AnyVirtualDisplay();
-        string tvId = FindRenderDevice(tvAudioName);
-        bool tvActive = tvId != null;
-        if (tvActive && !hasVirtual && (tvAudioWasActive != true || hadVirtualForAudio))
-            switchAudioAt = DateTime.Now.AddSeconds(3);
+        string tvId = string.IsNullOrEmpty(tvAudioName) ? null : FindRenderDevice(tvAudioName);
+        string headsetId = string.IsNullOrEmpty(headsetName) ? null : FindRenderDevice(headsetName);
+        bool tvActive = tvId != null, headsetActive = headsetId != null;
+        if (!hasVirtual && ((tvActive && (tvAudioWasActive != true || hadVirtualForAudio))
+                            || (headsetWasActive.HasValue && headsetActive != headsetWasActive.Value)
+                            || (headsetActive && hadVirtualForAudio)))
+            switchAudioAt = DateTime.Now.AddSeconds(headsetActive != (headsetWasActive ?? false) ? 1 : 3);
         tvAudioWasActive = tvActive;
+        headsetWasActive = headsetActive;
         hadVirtualForAudio = hasVirtual;
 
         if (!switchAudioAt.HasValue || DateTime.Now < switchAudioAt.Value) return;
         switchAudioAt = null;
-        if (!tvActive || hasVirtual) return;
+        if (hasVirtual) return;
+        string targetId = headsetActive ? headsetId : tvId, targetName = headsetActive ? headsetName : tvAudioName;
+        if (targetId == null) return;
         string current = DefaultAudioDeviceName();
-        if (current.IndexOf(tvAudioName, StringComparison.OrdinalIgnoreCase) >= 0) return;
-        var policy = (IPolicyConfig)new PolicyConfigClient();
-        for (int role = 0; role < 3; role++) policy.SetDefaultEndpoint(tvId, role);
-        Log("Audio output switched from " + current + " to " + DefaultAudioDeviceName());
+        if (current.IndexOf(targetName, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            var policy = (IPolicyConfig)new PolicyConfigClient();
+            for (int role = 0; role < 3; role++) policy.SetDefaultEndpoint(targetId, role);
+            Log("Audio output switched from " + current + " to " + DefaultAudioDeviceName());
+        }
+        // The headset's microphone becomes the default too, so voice chat picks it up
+        if (headsetActive)
+        {
+            string micId = FindDevice(headsetName, 1 /* capture */);
+            if (micId != null)
+            {
+                var policy = (IPolicyConfig)new PolicyConfigClient();
+                for (int role = 0; role < 3; role++) policy.SetDefaultEndpoint(micId, role);
+            }
+        }
     }
 
     static string FindRenderDevice(string nameContains)
     {
+        return FindDevice(nameContains, 0 /* render */);
+    }
+
+    static string FindDevice(string nameContains, int dataFlow)
+    {
         IMMDeviceCollection devices;
-        ((IMMDeviceEnumerator)new MMDeviceEnumerator()).EnumAudioEndpoints(0 /* render */, 1 /* active */, out devices);
+        ((IMMDeviceEnumerator)new MMDeviceEnumerator()).EnumAudioEndpoints(dataFlow, 1 /* active */, out devices);
         uint count;
         devices.GetCount(out count);
         for (uint i = 0; i < count; i++)
@@ -272,6 +297,14 @@ static class CouchKit
         int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid context);
     }
 
+    // The TV's screen area (the first physical screen), for windows CouchKit shows itself
+    internal static System.Drawing.Rectangle TvBounds()
+    {
+        RECT? r = FirstPhysicalScreen();
+        if (!r.HasValue) return System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+        return System.Drawing.Rectangle.FromLTRB(r.Value.Left, r.Value.Top, r.Value.Right, r.Value.Bottom);
+    }
+
     const ushort Start = 0x0010, Back = 0x0020, Combo = Start | Back, Guide = 0x0400;
     const uint WM_CLOSE = 0x0010;
 
@@ -311,6 +344,8 @@ static class CouchKit
                 Lighting.Log = Log;
                 Lighting.Start(S.Lighting);
             }
+            DiscordBridge.Start(S.Discord);
+            PartyPanel.Start(S.Discord);
             SmartHome.Log = Log;
             SmartHome.Start(S.SmartHome, S.Lighting);
 
@@ -352,6 +387,9 @@ static class CouchKit
                             catch (Exception ex) { Log("Xbox button action failed: " + ex.Message); }
                         }
                     }
+
+                    try { PadExtras.Handle(i, connected, S.Controller, s.Pad.Buttons, s.Pad.LX, s.Pad.LY, s.Pad.RY); }
+                    catch (Exception ex) { Log("Controller extras failed: " + ex.Message); }
 
                     bool down = connected && (s.Pad.Buttons & Combo) == Combo;
                     if (!down) { held[i] = null; stage[i] = 0; continue; }
@@ -486,7 +524,7 @@ static class CouchKit
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     const int SW_RESTORE = 9;
 
-    static void BringToFront(IntPtr hwnd)
+    internal static void BringToFront(IntPtr hwnd)
     {
         if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
         // Windows only lets the process with the latest input change the foreground window;
@@ -790,7 +828,7 @@ static class CouchKit
         SetWindowPos(hwnd, IntPtr.Zero, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    static void Rumble(int index, int ms)
+    internal static void Rumble(int index, int ms)
     {
         ThreadPool.QueueUserWorkItem(_ =>
         {
@@ -802,7 +840,7 @@ static class CouchKit
         });
     }
 
-    static void Log(string msg)
+    internal static void Log(string msg)
     {
         try { File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + Environment.NewLine); }
         catch { }

@@ -4,7 +4,10 @@
     "CloseHoldMs": 1500,
     "KillHoldMs": 4000,
     "GuideButton": true,
-    "GuideTapMaxMs": 500
+    "GuideTapMaxMs": 500,
+    "DiscordButtons": true,
+    "MouseMode": true,
+    "MouseSpeed": 45
   },
   "Display": {
     "KeepPlayniteOnTv": true,
@@ -17,7 +20,8 @@
     "VirtualDisplayNames": [ "Virtual", "SudoMaker", "IddSample", "Parsec" ]
   },
   "Audio": {
-    "TvDeviceName": ""
+    "TvDeviceName": "",
+    "HeadsetDeviceName": ""
   },
   "Games": {
     "EmulatorFolders": [],
@@ -40,5 +44,9 @@
     "NanoleafHost": "",
     "NanoleafToken": "",
     "NanoleafTransitionTime": 24
+  },
+  "Discord": {
+    "Enabled": true,
+    "Favourites": []
   }
 }

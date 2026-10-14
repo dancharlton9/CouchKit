@@ -12,6 +12,7 @@ class Settings
     public GameSettings Games { get; set; }
     public LightingSettings Lighting { get; set; }
     public SmartHomeSettings SmartHome { get; set; }
+    public DiscordSettings Discord { get; set; }
 
     public Settings()
     {
@@ -21,6 +22,7 @@ class Settings
         Games = new GameSettings();
         Lighting = new LightingSettings();
         SmartHome = new SmartHomeSettings();
+        Discord = new DiscordSettings();
     }
 
     // Settings, log and the running-game files the Playnite add-on writes all live here, outside
@@ -49,6 +51,8 @@ class Settings
             if (s.Games == null) s.Games = new GameSettings();
             if (s.Lighting == null) s.Lighting = new LightingSettings();
             if (s.SmartHome == null) s.SmartHome = new SmartHomeSettings();
+            if (s.Discord == null) s.Discord = new DiscordSettings();
+            if (s.Discord.Favourites == null) s.Discord.Favourites = new DiscordFavourite[0];
             note = "settings from " + FilePath;
             return s;
         }
@@ -67,7 +71,11 @@ class ControllerSettings
     public int KillHoldMs { get; set; }       // ...this long: force it closed
     public bool GuideButton { get; set; }     // tap the Xbox button to switch between the game and Playnite
     public int GuideTapMaxMs { get; set; }    // longer holds are left to Windows
-    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; }
+    public bool MouseMode { get; set; }       // Back + RB: controller as mouse (left stick, A click, B right-click, right stick scroll)
+    public double MouseSpeed { get; set; }    // pointer pixels per 30 ms at full tilt
+    public bool DiscordButtons { get; set; }  // Back + Y Party panel, Back + LB Discord mute, Back + A answer, Back + B leave/decline
+
+    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; }
 }
 
 class DisplaySettings
@@ -94,7 +102,10 @@ class AudioSettings
     // Switch the default sound output to the device whose name contains this, when the TV is the
     // only screen (at startup, when the TV turns on, after a stream ends). Empty = off.
     public string TvDeviceName { get; set; }
-    public AudioSettings() { TvDeviceName = ""; }
+    // While a device whose name contains this is connected (e.g. a wireless headset), sound and the
+    // default microphone go to it instead of the TV. Empty = off.
+    public string HeadsetDeviceName { get; set; }
+    public AudioSettings() { TvDeviceName = ""; HeadsetDeviceName = ""; }
 }
 
 class GameSettings
@@ -137,4 +148,22 @@ class SmartHomeSettings
     public string NanoleafToken { get; set; }
     public int NanoleafTransitionTime { get; set; }   // Flow speed, in tenths of a second per step
     public SmartHomeSettings() { WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; }
+}
+
+class DiscordSettings
+{
+    public bool Enabled { get; set; }
+    // Shown in the Party panel (Back + Y). Either a friend: {"Label":"Our kid","Friend":"UncleChopChopz"}
+    // (their name as it appears in Discord's direct messages list), or a voice channel:
+    // {"Label":"Gaming","Server":"Charlton Home","Channel":"General"}.
+    public DiscordFavourite[] Favourites { get; set; }
+    public DiscordSettings() { Enabled = true; Favourites = new DiscordFavourite[0]; }
+}
+
+class DiscordFavourite
+{
+    public string Label { get; set; }
+    public string Friend { get; set; }
+    public string Server { get; set; }
+    public string Channel { get; set; }
 }

@@ -25,6 +25,28 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - Sends the running game's colours to a **webhook**, for example a Home Assistant automation, so the room's lights can match the game and go back afterwards.
 - Plays a **flowing animation in the game's colours on Nanoleaf panels**, then puts back whatever they were showing.
 
+**Party: Discord from the controller** (optional)
+- Discord has no console-style "transfer call" for PCs, so CouchKit drives the Discord desktop app through Windows accessibility, the same way a screen reader does, while Discord stays minimised behind Playnite or the game.
+- **Back + Y** opens the **Party panel** on the TV: call a favourite friend, join a favourite voice channel, mute, deafen, leave, or open Discord with **mouse mode**.
+- **Back + LB** toggles Discord's own mute. One long buzz means muted, two short means live. It's Discord's mute, not the Windows microphone, so in-game voice chat isn't affected.
+- **Incoming calls** show a banner on the TV and rumble the controller. **Back + A** answers, **Back + B** declines or hangs up.
+- **Mouse mode** (**Back + RB**): left stick moves the pointer, A clicks, B right-clicks, right stick scrolls. It works for any desktop app.
+
+**Headset** (optional)
+- While a configured headset is switched on, sound and the default microphone go to it. When it's switched off, they go back to the TV.
+
+### Controller at a glance
+
+| Hold | Does |
+|---|---|
+| Back + Start | Close the game (keep holding to force-close) |
+| Xbox button (tap) | Switch between the game and Playnite |
+| Back + Y | Party panel (D-pad moves, A selects, B closes) |
+| Back + LB | Discord mute / unmute |
+| Back + A | Answer an incoming Discord call |
+| Back + B | Hang up, or decline an incoming call |
+| Back + RB | Mouse mode on / off |
+
 ## Requirements
 
 - Windows 10 or 11, x64.
@@ -83,6 +105,8 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Controller.CloseHoldMs` / `KillHoldMs` | `1500` / `4000` | How long to hold Back + Start to close / force-close the game |
 | `Controller.GuideButton` | `true` | Tap the Xbox button to switch between the game and Playnite |
 | `Controller.GuideTapMaxMs` | `500` | Longer presses are left to Windows |
+| `Controller.DiscordButtons` | `true` | The Back + Y / LB / A / B Discord controls |
+| `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Back + RB mouse mode, and the pointer's top speed in pixels per 30 ms |
 | `Display.KeepPlayniteOnTv` | `true` | Keep Playnite off the streaming display |
 | `Display.KeepGameOnTv` | `true` | Keep the running game off the streaming display |
 | `Display.MuteWhileStreaming` | `true` | Mute Playnite and the game while a stream is connected |
@@ -90,6 +114,9 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Display.TvWidth`, `TvHeight`, `TvRefreshRate` | `0` | The TV's mode, put back whenever the screens change. `0` = leave it alone |
 | `Display.VirtualDisplayNames` | `Virtual`, `SudoMaker`, `IddSample`, `Parsec` | A display adapter whose name contains one of these counts as a streaming display |
 | `Audio.TvDeviceName` | empty (off) | Part of the TV's name in Windows' sound settings, for example `LG TV`. Sound is switched back to it when the TV is the only screen |
+| `Audio.HeadsetDeviceName` | empty (off) | Part of a headset's name, for example `VIRTUOSO`. While it's connected, it becomes the default speaker and microphone instead of the TV |
+| `Discord.Enabled` | `true` | The Party panel and Discord controls |
+| `Discord.Favourites` | none | Party panel entries. A friend: `{"Label": "My brother", "Friend": "their name as shown in Discord's DM list"}`. A voice channel: `{"Label": "Gaming", "Server": "Server name", "Channel": "General"}`. Friends must have a recent DM, so they appear in Discord's direct messages list |
 | `Games.EmulatorFolders` | none | Folders your emulators run from. Emulated games don't run from their "install folder", so this is how CouchKit finds them |
 | `Games.ProtectedProcesses` | none | Extra programs never treated as the game, for example `["MyLauncher"]` |
 | `Lighting.Enabled` | `true` | Lighting through OpenRGB |

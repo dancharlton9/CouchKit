@@ -21,7 +21,8 @@ Set-Content obj\Version.cs -Encoding UTF8 @"
 [assembly: System.Reflection.AssemblyFileVersion("$version")]
 "@
 
-& $csc /nologo /target:winexe /platform:x64 /optimize /r:System.Drawing.dll /r:System.Web.Extensions.dll /out:bin\CouchKit.exe (Get-ChildItem src\*.cs).FullName obj\Version.cs
+& $csc /nologo /target:winexe /platform:x64 /optimize /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll `
+    /r:"$wpf\UIAutomationClient.dll" /r:"$wpf\UIAutomationTypes.dll" /r:"$wpf\WindowsBase.dll" /out:bin\CouchKit.exe (Get-ChildItem src\*.cs).FullName obj\Version.cs
 if ($LASTEXITCODE) { throw 'CouchKit.exe build failed' }
 "Built bin\CouchKit.exe $version"
 
