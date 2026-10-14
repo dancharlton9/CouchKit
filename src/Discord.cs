@@ -45,13 +45,19 @@ static class DiscordBridge
     }
 
     // Queue an action for the Discord thread; result (a short message for the panel/log) via callback
-    public static void Do(Func<string> action, Action<string> done)
+    public static void Do(Func<string> action, Action<string> done) { Do(action, done, true); }
+
+    // keepScreen: if Discord comes to the front during the action, put back whatever was in front
+    // (the game or Playnite) and minimise Discord. Off only for deliberately opening Discord.
+    public static void Do(Func<string> action, Action<string> done, bool keepScreen)
     {
         if (!S.Enabled) return;
         work.Add(() =>
         {
             string msg;
+            IntPtr before = GetForegroundWindow();
             try { msg = action(); } catch (Exception ex) { msg = "Discord: " + ex.Message; }
+            if (keepScreen) PutScreenBack(before);
             if (!string.IsNullOrEmpty(msg)) CouchKit.Log(msg);
             if (done != null) done(msg);
         });
@@ -236,9 +242,12 @@ static class DiscordBridge
         var link = WaitFor(main, ControlType.Hyperlink, new Regex("^(unread, )?" + Regex.Escape(friend) + @" \((direct|group) message\)", RegexOptions.IgnoreCase), 3000);
         if (link == null) return "Discord: no recent chat with " + friend + " (open a chat with them once in Discord)";
         ((InvokePattern)link.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
-        var call = WaitFor(main, ControlType.Button, new Regex("^Start Voice Call$"), 4000);
-        if (call == null) return "Discord: couldn't find Start Voice Call for " + friend;
+        // "Join Call" instead when a call is still going in that chat (e.g. after leaving it)
+        var call = WaitFor(main, ControlType.Button, new Regex("^(Start Voice Call|Join Call)$"), 4000);
+        if (call == null) return "Discord: couldn't find a call button for " + friend;
+        bool rejoin = call.Current.Name == "Join Call";
         ((InvokePattern)call.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        if (rejoin) return "Discord: rejoined the call with " + friend;
         CallingTo = friend;
         CallingSince = DateTime.Now;
         return "Discord: calling " + friend;
@@ -280,6 +289,22 @@ static class DiscordBridge
             return "Discord: " + ok;
         }
         return "Discord: " + none;
+    }
+
+    static void PutScreenBack(IntPtr before)
+    {
+        try
+        {
+            var discord = new HashSet<uint>(Process.GetProcessesByName("Discord").Select(p => (uint)p.Id));
+            uint fgPid, beforePid;
+            GetWindowThreadProcessId(GetForegroundWindow(), out fgPid);
+            GetWindowThreadProcessId(before, out beforePid);
+            if (!discord.Contains(fgPid) || discord.Contains(beforePid) || before == IntPtr.Zero) return;
+            IntPtr main = Process.GetProcessesByName("Discord").Select(p => p.MainWindowHandle).FirstOrDefault(h => h != IntPtr.Zero);
+            if (main != IntPtr.Zero) ShowWindow(main, 6 /* SW_MINIMIZE */);
+            CouchKit.BringToFront(before);
+        }
+        catch { }
     }
 
     static void GoToDirectMessages(AutomationElement main)

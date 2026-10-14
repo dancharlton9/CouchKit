@@ -18,7 +18,8 @@ static class PartyPanel
     // An entry runs an Action on the Discord thread, or opens a sub-menu whose entries are loaded
     // from Discord (chats, servers, voice channels).
     class Item { public string Text; public Func<string> Action; public bool CloseAfter; public Func<List<Item>> Submenu; public Color? Dot;
-                 public Func<int, int> Adjust; public int Level = -2; }   // volume items: D-pad left/right; Level -1 = nothing to control
+                 public Func<int, int> Adjust; public int Level = -2;
+                 public bool Direct; }   // Direct: run on the panel's thread instead of the Discord thread   // volume items: D-pad left/right; Level -1 = nothing to control
     class Level { public string Title; public List<Item> Items; public int Selected; }
 
     static Form panel, banner;
@@ -140,6 +141,7 @@ static class PartyPanel
             if (selected >= items.Count) return;
             var item = items[selected];
             if (item.Submenu != null) { OpenSubmenu(item); return; }
+            if (item.Direct && item.Action != null) { item.Action(); return; }
             if (item.Action == null) { if (parents.Count == 0) Close(); return; }
             message = "…";
             panel.Invalidate();
@@ -174,7 +176,7 @@ static class PartyPanel
         list.Add(new Item { Text = DiscordBridge.Muted ? "Unmute microphone" : "Mute microphone", Action = DiscordBridge.ToggleMute });
         list.Add(new Item { Text = DiscordBridge.Deafened ? "Undeafen" : "Deafen", Action = DiscordBridge.ToggleDeafen });
         if (DiscordBridge.InCall) list.Add(new Item { Text = "Leave call", Action = DiscordBridge.Leave });
-        list.Add(new Item { Text = "Open Discord (mouse mode)", Action = () => { OnUi(() => { Close(); EnterMouseMode(); }); return ""; } });
+        list.Add(new Item { Text = "Open Discord (mouse mode)", Direct = true, Action = () => { Close(); EnterMouseMode(); return ""; } });
         list.Add(new Item { Text = "Close", Action = null });
         string current = selected < items.Count ? items[selected].Text : null;
         items = list;
