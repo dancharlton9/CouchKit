@@ -20,6 +20,8 @@ static class DiscordBridge
 {
     public static volatile bool Running, InCall, Muted, Deafened, Incoming;
     public static volatile string IncomingFrom = "";
+    public static volatile string CallingTo = "";          // outgoing call just started (for the "Calling…" banner)
+    public static DateTime CallingSince = DateTime.MinValue;
     static readonly BlockingCollection<Action> work = new BlockingCollection<Action>();
     static DiscordSettings S = new DiscordSettings();
 
@@ -83,8 +85,16 @@ static class DiscordBridge
         InCall = Find(main, ControlType.Button, LeaveNames) != null;
         Muted = IsOn(Find(main, ControlType.Button, "Mute"));
         Deafened = IsOn(Find(main, ControlType.Button, "Deafen"));
+        // A real ring offers Decline/Ignore as well. "Join Call" on its own is just a call still going
+        // on in a chat you left, which isn't an incoming call.
         AutomationElement accept = null;
-        foreach (var w in windows) { accept = Find(w, ControlType.Button, AcceptNames); if (accept != null) break; }
+        foreach (var w in windows)
+        {
+            var a = Find(w, ControlType.Button, AcceptNames);
+            if (a == null) continue;
+            bool ringing = Find(w, ControlType.Button, DeclineNames) != null || !a.Current.Name.Equals("Join Call", StringComparison.OrdinalIgnoreCase);
+            if (ringing) { accept = a; break; }
+        }
         Incoming = accept != null && !InCall;
         IncomingFrom = Incoming ? CallerName(accept) : "";
     }
@@ -98,7 +108,7 @@ static class DiscordBridge
             {
                 var text = parent.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
                     .Cast<AutomationElement>().Select(t => t.Current.Name).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n) && !AcceptNames.IsMatch(n) && !DeclineNames.IsMatch(n));
-                if (text != null) return text;
+                if (text != null && !Regex.IsMatch(text, "^(Notifications|Direct Messages|Friends|Inbox|Discord)$", RegexOptions.IgnoreCase)) return text;
                 parent = TreeWalker.ControlViewWalker.GetParent(parent);
             }
         }
@@ -150,7 +160,7 @@ static class DiscordBridge
         return "";
     }
 
-    static readonly Regex ChatLink = new Regex(@"^(?<name>.+?) \((?<kind>direct|group) message\)(, (?<members>\d+) Members)?", RegexOptions.IgnoreCase);
+    static readonly Regex ChatLink = new Regex(@"^(unread, )?(?<name>.+?) \((?<kind>direct|group) message\)(, (?<members>\d+) Members)?(, (?<status>Online|Idle|Do Not Disturb|Offline|Streaming))?", RegexOptions.IgnoreCase);
 
     public static List<Chat> ListChats()
     {
@@ -167,7 +177,8 @@ static class DiscordBridge
             string name = m.Groups["name"].Value;
             if (chats.Any(c => c.Name == name)) continue;
             bool group = m.Groups["kind"].Value.Equals("group", StringComparison.OrdinalIgnoreCase);
-            chats.Add(new Chat { Name = name, Group = group, Members = members, Status = group ? "" : StatusNear(e) });
+            string status = m.Groups["status"].Value;
+            chats.Add(new Chat { Name = name, Group = group, Members = members, Status = group ? "" : status.Length > 0 ? status : StatusNear(e) });
         }
         // People who are around first (keeping Discord's most-recent order within each group)
         Func<Chat, int> rank = c => c.Group ? 1 : c.Status == "Online" || c.Status == "Streaming" ? 0 : c.Status == "Idle" || c.Status == "Do Not Disturb" ? 1 : 2;
@@ -222,12 +233,14 @@ static class DiscordBridge
         if (main == null) return "Discord isn't running";
         if (InCall) Leave();
         GoToDirectMessages(main);
-        var link = WaitFor(main, ControlType.Hyperlink, new Regex("^" + Regex.Escape(friend) + @" \((direct|group) message\)", RegexOptions.IgnoreCase), 3000);
+        var link = WaitFor(main, ControlType.Hyperlink, new Regex("^(unread, )?" + Regex.Escape(friend) + @" \((direct|group) message\)", RegexOptions.IgnoreCase), 3000);
         if (link == null) return "Discord: no recent chat with " + friend + " (open a chat with them once in Discord)";
         ((InvokePattern)link.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         var call = WaitFor(main, ControlType.Button, new Regex("^Start Voice Call$"), 4000);
         if (call == null) return "Discord: couldn't find Start Voice Call for " + friend;
         ((InvokePattern)call.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        CallingTo = friend;
+        CallingSince = DateTime.Now;
         return "Discord: calling " + friend;
     }
 

@@ -223,12 +223,18 @@ string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "
         }).ToList();
     }
 
-    static bool lastIncoming;
+    static bool lastIncoming, lastCalling;
     static void Tick()
     {
         if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); }
         bool incoming = DiscordBridge.Incoming;
-        if (incoming && !banner.Visible)
+        // "Calling …" shows for 8 seconds after starting a call, so there's visible feedback
+        bool calling = DiscordBridge.CallingTo.Length > 0 && (DateTime.Now - DiscordBridge.CallingSince).TotalSeconds < 8;
+        if (!calling && DiscordBridge.CallingTo.Length > 0) DiscordBridge.CallingTo = "";
+        bool show = incoming || calling;
+        if (calling && !lastCalling) for (int p = 0; p < 4; p++) CouchKit.Rumble(p, 120);
+        lastCalling = calling;
+        if (show && !banner.Visible)
         {
             Rectangle tv = CouchKit.TvBounds();
             int w = tv.Width * 42 / 100, h = tv.Height * 9 / 100;
@@ -236,7 +242,8 @@ string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "
             banner.Show();
             banner.Invalidate();
         }
-        else if (!incoming && banner.Visible) banner.Hide();
+        else if (!show && banner.Visible) banner.Hide();
+        if (banner.Visible) banner.Invalidate();
         if (incoming && !lastIncoming)
             ThreadPool.QueueUserWorkItem(_ => { for (int r = 0; r < 3; r++) { for (int p = 0; p < 4; p++) CouchKit.Rumble(p, 150); Thread.Sleep(350); } });
         lastIncoming = incoming;
@@ -309,9 +316,17 @@ string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "
         using (var text = new SolidBrush(Text))
         using (var dim = new SolidBrush(Dim))
         {
-            string who = DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call";
-            g.DrawString(who, big, text, unit, unit * 0.4f);
-            g.DrawString("Double-tap the Xbox button to answer", small, dim, unit, unit * 1.9f);
+            if (DiscordBridge.Incoming)
+            {
+                string who = DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call";
+                g.DrawString(who, big, text, unit, unit * 0.4f);
+                g.DrawString("Double-tap the Xbox button to answer", small, dim, unit, unit * 1.9f);
+            }
+            else
+            {
+                g.DrawString("Calling " + DiscordBridge.CallingTo + "…", big, text, unit, unit * 0.4f);
+                g.DrawString("Waiting for them to join  ·  double-tap the Xbox button for call options", small, dim, unit, unit * 1.9f);
+            }
         }
     }
 
