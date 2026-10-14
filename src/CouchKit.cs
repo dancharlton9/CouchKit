@@ -296,6 +296,85 @@ static class CouchKit
         int GetMasterVolume(out float level);
         int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid context);
     }
+    [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioEndpointVolume
+    {
+        void _RegisterControlChangeNotify(); void _UnregisterControlChangeNotify(); void _GetChannelCount(); void _SetMasterVolumeLevel();
+        int SetMasterVolumeLevelScalar(float level, ref Guid context);
+        void _GetMasterVolumeLevel();
+        int GetMasterVolumeLevelScalar(out float level);
+    }
+
+    // --- Volume mixer (Party panel → Volume) ---
+    // Each returns the volume as a percentage after changing it by delta (0 = just read it), or -1
+    // if there's nothing to control (no game running, Discord silent or closed).
+
+    internal static int GameVolume(int delta) { return AppVolume(PlayniteGameProcesses(), delta); }
+
+    internal static int DiscordVolume(int delta)
+    {
+        return AppVolume(Process.GetProcessesByName("Discord").Select(p => (uint)p.Id).ToArray(), delta);
+    }
+
+    // Master volume of the current sound output (headset or TV)
+    internal static int MasterVolume(int delta)
+    {
+        IMMDeviceWithProps device;
+        ((IMMDeviceEnumerator)new MMDeviceEnumerator()).GetDefaultAudioEndpoint(0 /* render */, 1 /* multimedia */, out device);
+        var iid = typeof(IAudioEndpointVolume).GUID;
+        object obj;
+        ((IMMDevice)(object)device).Activate(ref iid, 1, IntPtr.Zero, out obj);
+        var volume = (IAudioEndpointVolume)obj;
+        float level;
+        volume.GetMasterVolumeLevelScalar(out level);
+        if (delta != 0)
+        {
+            level = Math.Max(0f, Math.Min(1f, level + delta / 100f));
+            var context = Guid.Empty;
+            volume.SetMasterVolumeLevelScalar(level, ref context);
+        }
+        return (int)Math.Round(level * 100);
+    }
+
+    // Per-app volume, as in Windows' volume mixer: every audio session the processes own, on every output
+    static int AppVolume(uint[] pids, int delta)
+    {
+        if (pids.Length == 0) return -1;
+        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+        IMMDeviceCollection devices;
+        enumerator.EnumAudioEndpoints(0 /* render */, 1 /* active */, out devices);
+        uint deviceCount;
+        devices.GetCount(out deviceCount);
+        var managerIid = typeof(IAudioSessionManager2).GUID;
+        var context = Guid.Empty;
+        float? result = null;
+        for (uint d = 0; d < deviceCount; d++)
+        {
+            IMMDevice device;
+            object managerObj;
+            devices.Item(d, out device);
+            if (device.Activate(ref managerIid, 1, IntPtr.Zero, out managerObj) != 0) continue;
+            IAudioSessionEnumerator sessions;
+            ((IAudioSessionManager2)managerObj).GetSessionEnumerator(out sessions);
+            int sessionCount;
+            sessions.GetCount(out sessionCount);
+            for (int s = 0; s < sessionCount; s++)
+            {
+                object session;
+                sessions.GetSession(s, out session);
+                uint pid;
+                ((IAudioSessionControl2)session).GetProcessId(out pid);
+                if (!pids.Contains(pid)) continue;
+                var vol = (ISimpleAudioVolume)session;
+                float level;
+                vol.GetMasterVolume(out level);
+                // All of an app's sessions move together, to the level of the first one found
+                if (!result.HasValue) result = Math.Max(0f, Math.Min(1f, level + delta / 100f));
+                if (delta != 0) vol.SetMasterVolume(result.Value, ref context);
+            }
+        }
+        return result.HasValue ? (int)Math.Round(result.Value * 100) : -1;
+    }
 
     // The TV's screen area (the first physical screen), for windows CouchKit shows itself
     internal static System.Drawing.Rectangle TvBounds()

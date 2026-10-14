@@ -17,7 +17,8 @@ static class PartyPanel
 {
     // An entry runs an Action on the Discord thread, or opens a sub-menu whose entries are loaded
     // from Discord (chats, servers, voice channels).
-    class Item { public string Text; public Func<string> Action; public bool CloseAfter; public Func<List<Item>> Submenu; public Color? Dot; }
+    class Item { public string Text; public Func<string> Action; public bool CloseAfter; public Func<List<Item>> Submenu; public Color? Dot;
+                 public Func<int, int> Adjust; public int Level = -2; }   // volume items: D-pad left/right; Level -1 = nothing to control
     class Level { public string Title; public List<Item> Items; public int Selected; }
 
     static Form panel, banner;
@@ -169,6 +170,7 @@ static class PartyPanel
         if (DiscordBridge.Incoming) list.Insert(0, new Item { Text = "Answer call" + (DiscordBridge.IncomingFrom.Length > 0 ? " from " + DiscordBridge.IncomingFrom : ""), Action = DiscordBridge.Answer, CloseAfter = true });
         list.Add(new Item { Text = "Chats ›", Submenu = ChatsMenu });
         list.Add(new Item { Text = "Voice channels ›", Submenu = ServersMenu });
+        list.Add(new Item { Text = "Volume ›", Submenu = VolumeMenu });
         list.Add(new Item { Text = DiscordBridge.Muted ? "Unmute microphone" : "Mute microphone", Action = DiscordBridge.ToggleMute });
         list.Add(new Item { Text = DiscordBridge.Deafened ? "Undeafen" : "Deafen", Action = DiscordBridge.ToggleDeafen });
         if (DiscordBridge.InCall) list.Add(new Item { Text = "Leave call", Action = DiscordBridge.Leave });
@@ -189,6 +191,30 @@ static class PartyPanel
 string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "";
             return new Item { Text = "Call " + name + (c.Group ? "  (group" + (c.Members > 0 ? ", " + c.Members : "") + ")" : status), Action = () => DiscordBridge.CallFriend(name), CloseAfter = true, Dot = StatusColour(c.Status) };
         }).ToList();
+    }
+
+    static List<Item> VolumeMenu()
+    {
+        var list = new List<Item>
+        {
+            new Item { Text = "Game", Adjust = CouchKit.GameVolume },
+            new Item { Text = "Discord", Adjust = CouchKit.DiscordVolume },
+            new Item { Text = "Everything", Adjust = CouchKit.MasterVolume },
+        };
+        foreach (var i in list) { try { i.Level = i.Adjust(0); } catch { i.Level = -1; } }
+        return list;
+    }
+
+    // D-pad left/right on a volume item
+    public static void Adjust(int direction)
+    {
+        OnUi(() =>
+        {
+            if (selected >= items.Count || items[selected].Adjust == null) return;
+            var item = items[selected];
+            try { item.Level = item.Adjust(direction * 5); } catch (Exception ex) { CouchKit.Log("Volume change failed: " + ex.Message); }
+            panel.Invalidate();
+        });
     }
 
     // Discord's own status colours
@@ -296,12 +322,29 @@ string status = c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "
                     using (var dot = new SolidBrush(items[i].Dot.Value)) g.FillEllipse(dot, textX, y + (rowH - d) / 2, d, d);
                     textX += d + unit / 2;
                 }
-                g.DrawString(items[i].Text, body, i == selected ? text : dim, new RectangleF(textX, y + (rowH - body.Height) / 2, r.Right - textX - unit / 2, body.Height * 1.3f), noWrap);
+                int textRight = r.Right - unit / 2;
+                if (items[i].Level >= -1)
+                {
+                    // Volume bar on the right: palette gradient for the level, or "not playing"
+                    int barW = r.Width * 45 / 100, barH = unit / 2, barX = r.Right - barW - unit, barY = y + (rowH - barH) / 2;
+                    textRight = barX - unit / 2;
+                    if (items[i].Level < 0) g.DrawString("not playing", small, dim, barX, y + (rowH - small.Height) / 2);
+                    else
+                    {
+                        using (var track = new SolidBrush(Color.FromArgb(60, 255, 255, 255))) g.FillRectangle(track, barX, barY, barW, barH);
+                        int fill = barW * items[i].Level / 100;
+                        if (fill > 0) using (var lvl = new LinearGradientBrush(new Rectangle(barX, barY, barW, barH), Aqua, Magenta, LinearGradientMode.Horizontal)) g.FillRectangle(lvl, barX, barY, fill, barH);
+                        g.DrawString(items[i].Level + "%", small, i == selected ? text : dim, barX - unit * 2.6f, y + (rowH - small.Height) / 2);
+                        textRight = (int)(barX - unit * 2.8f);
+                    }
+                }
+                g.DrawString(items[i].Text, body, i == selected ? text : dim, new RectangleF(textX, y + (rowH - body.Height) / 2, textRight - textX, body.Height * 1.3f), noWrap);
                 y += step;
             }
             if (firstVisible + visible < items.Count) g.DrawString("▼", small, dim, size.Width - x * 2, y);
             if (message.Length > 0) g.DrawString(message, small, dim, new RectangleF(x, size.Height - unit * 6, size.Width - x * 2, unit * 3));
-            g.DrawString("A  select     B  back     D-pad  move", small, dim, x, size.Height - unit * 2.5f);
+            bool adjustable = selected < items.Count && items[selected].Adjust != null;
+            g.DrawString(adjustable ? "◀ ▶  volume     B  back     D-pad  move" : "A  select     B  back     D-pad  move", small, dim, x, size.Height - unit * 2.5f);
         }
     }
 
