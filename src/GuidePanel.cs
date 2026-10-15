@@ -493,6 +493,26 @@ static class GuidePanel
         list.Add(new Item { Text = "Playnite library", Sub = "Everything else", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
     }
 
+    // CouchKit status: each feature, whether it's working, and what to do if not
+    public static Settings statusSettings;
+    static readonly Color Amber = Color.FromArgb(240, 178, 50);
+    static List<Item> StatusMenu()
+    {
+        var list = new List<Item>();
+        var checks = Status.All(statusSettings);
+        foreach (var group in new[] { Status.State.Problem, Status.State.NeedsSetup, Status.State.Working, Status.State.Off })
+        {
+            var these = checks.Where(c => c.State == group).ToList();
+            if (these.Count == 0) continue;
+            list.Add(Heading(group == Status.State.Problem ? "Not working" : group == Status.State.NeedsSetup ? "Needs setting up" : group == Status.State.Working ? "Working" : "Off"));
+            foreach (var c in these)
+                list.Add(new Item { Text = c.Name == "Xbox button" ? Pad.HomeButton.Substring(0, 1).ToUpper() + Pad.HomeButton.Substring(1) : c.Name, Sub = c.Detail, Icon = c.Icon, Quiet = true,
+                                    Dot = c.State == Status.State.Working ? Green : c.State == Status.State.NeedsSetup ? Amber : c.State == Status.State.Problem ? Red : Color.FromArgb(128, 132, 142) });
+        }
+        list.Add(Heading("CouchKit " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3)));
+        return list;
+    }
+
     // --- Notifications: things worth seeing later (messages, missed calls, achievements, low
     // battery, screenshots), kept while CouchKit runs. Home shows them with an unread count. ---
     class Note { public string Icon, Title, Detail, Image; public DateTime Time; }
@@ -552,6 +572,15 @@ static class GuidePanel
     // --- System tab ---
     static void SystemItems(List<Item> list)
     {
+        if (statusSettings != null)
+        {
+            var checks = Status.All(statusSettings);
+            int setup = checks.Count(c => c.State == Status.State.NeedsSetup), problems = checks.Count(c => c.State == Status.State.Problem);
+            string summary = problems > 0 ? problems + (problems == 1 ? " problem" : " problems") + (setup > 0 ? ", " + setup + " to set up" : "")
+                           : setup > 0 ? setup + (setup == 1 ? " thing" : " things") + " to set up" : "Everything's working";
+            list.Add(new Item { Text = "CouchKit status", Sub = summary, Icon = "info", Local = true, Badge = problems + setup > 0 ? (problems + setup).ToString() : "",
+                                Dot = problems > 0 ? Red : setup > 0 ? Amber : Green, Submenu = StatusMenu });
+        }
         list.Add(new Item { Text = "Turn screen off", Sub = "Any input wakes it", Icon = "tv", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(400); CouchKit.ScreenOff(); }); return ""; } });
         list.Add(new Item { Text = "Restart Playnite", Sub = "If it gets stuck", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
         list.Add(new Item { Text = "Restart PC", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
@@ -705,6 +734,7 @@ static class GuidePanel
 
     static void Tick()
     {
+        Pad.Refresh();
         // A ring that ended without a call starting is a missed call
         if (DiscordBridge.Incoming) { ringingFrom = DiscordBridge.IncomingFrom; ringEnded = DateTime.MinValue; }
         else if (lastIncoming) ringEnded = DateTime.Now;
@@ -885,6 +915,11 @@ static class GuidePanel
     // A hint like Xbox's: a coloured round button badge followed by its label. Returns the next x.
     static float Hint(Graphics g, string button, Color colour, string label, Font font, float x, float y, float size)
     {
+        // The controller's own button faces: PlayStation's shapes, Switch's L/R, neutral for others
+        string face = Pad.Face(button);
+        if (Pad.Style == Pad.Kind.PlayStation) colour = face == "cross" ? Color.FromArgb(124, 178, 232) : face == "circle" ? Color.FromArgb(255, 102, 102) : colour;
+        else if (Pad.Style != Pad.Kind.Xbox && (button == "A" || button == "B")) colour = Text;
+        button = face;
         using (var fill = new SolidBrush(Color.FromArgb(50, colour)))
         using (var ring = new Pen(colour, size / 12f))
         {
@@ -892,10 +927,22 @@ static class GuidePanel
             g.FillEllipse(fill, r);
             g.DrawEllipse(ring, r);
         }
+        if (button == "cross" || button == "circle")
+        {
+            using (var pen = new Pen(colour, size / 11f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            {
+                float c = size / 2, d = size * 0.2f;
+                if (button == "cross") { g.DrawLine(pen, x + c - d, y + c - d, x + c + d, y + c + d); g.DrawLine(pen, x + c + d, y + c - d, x + c - d, y + c + d); }
+                else g.DrawEllipse(pen, x + c - d, y + c - d, d * 2, d * 2);
+            }
+        }
+        else
+        {
         bool glyph = Glyphs.ContainsKey(button);
         using (var b = new SolidBrush(colour))
             Centred(g, glyph ? Glyphs[button] : button, glyph ? iconFont : "Segoe UI Semibold", glyph ? FontStyle.Regular : FontStyle.Regular,
                     size * (glyph ? 0.5f : button.Length > 1 ? 0.36f : 0.5f), b, x + size / 2, y + size / 2);
+        }
         float lx = x + size * 1.25f;
         Line(g, label, font, Dim, new RectangleF(lx, TextTop(font, label, y + size / 2), 1000, font.Height * 1.3f));
         return lx + TextRenderer.MeasureText(label, font).Width + size * 0.9f;
@@ -1410,7 +1457,8 @@ static class GuidePanel
             float tx = unit * 4, tw = size.Width - tx - unit;
             string first = DiscordBridge.Incoming ? (DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call")
                                                   : "Calling " + DiscordBridge.CallingTo + "…";
-            string second = DiscordBridge.Incoming ? "Press the Xbox button, then A to answer" : "Waiting for them to join  ·  Xbox ×2 for call options";
+            string confirm = Pad.Style == Pad.Kind.PlayStation ? "✕" : "A";
+            string second = DiscordBridge.Incoming ? "Press the " + Pad.HomeButton + ", then " + confirm + " to answer" : "Waiting for them to join  ·  double-tap the " + Pad.HomeButton + " for call options";
             Line(g, first, big, Text, new RectangleF(tx, TextTop(big, first, size.Height * 0.39f), tw, big.Height * 1.2f));
             Line(g, second, small, Dim, new RectangleF(tx, TextTop(small, second, size.Height * 0.7f), tw, small.Height * 1.3f));
         }
@@ -1535,6 +1583,21 @@ static class GuidePanel
         title = "Matt"; items = MockChat(); selected = 3;
         render("panel-chat.png", 1305, 2160, PaintPanel);
         parents.Clear();
+        // CouchKit status, and the footer and call banner for other controllers
+        tab = SystemTab; parents.Clear(); parents.Push(new Level { Title = "System", Items = new List<Item>(), Selected = 0 });
+        title = "CouchKit status"; items = StatusMenu(); selected = Selectable(0);
+        render("panel-status.png", 1305, 2160, PaintPanel);
+        parents.Clear();
+        var detected = Pad.Style;
+        foreach (var k in new[] { Pad.Kind.PlayStation, Pad.Kind.Switch })
+        {
+            Pad.Style = k; tab = HomeTab; items = new List<Item>(); Rebuild(); selected = Selectable(0);
+            render("panel-" + k.ToString().ToLowerInvariant() + ".png", 1305, 2160, PaintPanel);
+            DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Matt";
+            render("banner-" + k.ToString().ToLowerInvariant() + ".png", 1766, 259, PaintBanner);
+            DiscordBridge.Incoming = false;
+        }
+        Pad.Style = detected;
         // Achievements, from the real database
         var withAch = PlayniteLink.Recent().FirstOrDefault(gm => Achievements.ForGame(gm.Id) != null);
         if (withAch != null)

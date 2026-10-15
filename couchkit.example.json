@@ -7,7 +7,8 @@
     "GuideTapMaxMs": 500,
     "DiscordButtons": true,
     "MouseMode": true,
-    "MouseSpeed": 45
+    "MouseSpeed": 45,
+    "Style": "Auto"
   },
   "Display": {
     "KeepPlayniteOnTv": true,

@@ -417,6 +417,14 @@ static class CouchKit
     [DllImport("xinput1_4.dll")] static extern int XInputGetBatteryInformation(int index, byte devType, out XBattery info);
 
     // The first connected controller's battery: "Wired", "Full", "Medium", "Low", "Empty", or "" if none
+    // Controllers connected now (XInput slots in use)
+    internal static int ControllersConnected()
+    {
+        int n = 0;
+        for (int i = 0; i < 4; i++) { XState s; if (XInputGetState(i, out s) == 0) n++; }
+        return n;
+    }
+
     internal static string ControllerBattery()
     {
         for (int i = 0; i < 4; i++)
@@ -566,6 +574,8 @@ static class CouchKit
             string note;
             var ps = Settings.Load(out note);
             SmartHome.Start(ps.SmartHome, ps.Lighting);
+            GuidePanel.statusSettings = ps;
+            Pad.Setting = "Auto"; Pad.Refresh(); System.Threading.Thread.Sleep(1500);
             GuidePanel.Preview(ps.Discord, args[1]);
             return;
         }        if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
@@ -588,6 +598,11 @@ static class CouchKit
                 Lighting.Start(S.Lighting);
             }
             DiscordBridge.Start(S.Discord);
+            // Plug and play: features whose apps aren't installed stay off quietly (shown on the status page)
+            if (S.Discord.Enabled && !Status.DiscordInstalled) { S.Discord.Enabled = false; Log("Discord isn't installed: no Party tab"); }
+            Pad.Setting = string.IsNullOrEmpty(S.Controller.Style) ? "Auto" : S.Controller.Style;
+            Pad.Refresh();
+            GuidePanel.statusSettings = S;
             UiSound.Configure(S.Guide.Sounds, S.Guide.SoundVolume);
             GuidePanel.Animations = S.Guide.Animations;
             GuidePanel.Start(S.Discord);

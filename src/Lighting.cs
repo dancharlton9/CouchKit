@@ -24,6 +24,10 @@ static class Lighting
     public static Action<string> Log = _ => { };
     public static volatile bool Off;   // PC lighting switched off from the Guide (LEDs held black)
 
+    // For the status page: devices OpenRGB reported (-1 = not connected), and why not
+    public static volatile int Devices = -1;
+    public static volatile string Problem = "";
+
     public static void Start(LightingSettings settings)
     {
         L = settings;
@@ -52,6 +56,7 @@ static class Lighting
                     var ns = client.GetStream();
                     List<int[]> devices = Connect(ns);
                     Log("Lighting: connected to OpenRGB, " + devices.Count + " devices");
+                    Devices = devices.Count; Problem = "";
                     loggedOffline = false;
                     Animate(ns, devices, house);
                 }
@@ -59,6 +64,7 @@ static class Lighting
             catch (Exception ex)
             {
                 if (!loggedOffline) { Log("Lighting: OpenRGB not available (" + ex.Message + "), retrying"); loggedOffline = true; }
+                Devices = -1; Problem = ex.Message;
             }
             Thread.Sleep(5000);
         }

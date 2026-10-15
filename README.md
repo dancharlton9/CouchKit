@@ -36,9 +36,13 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - **Party** (Discord, optional): see below.
 - **Audio:** choose where sound plays (TV or headset), and a volume mixer for the game, Discord and everything, adjusted with D-pad left/right.
 - **Lights:** Home Assistant scenes, room lights on/off, and PC lighting on/off.
-- **System:** the PC's status (CPU and GPU temperature and load, GPU power, memory, how long it's been on), turn the screen off, restart Playnite, restart or shut down the PC (each asks first), and free space on each drive.
+- **System:** **CouchKit status** (every feature, whether it's working, and what to do if not), the PC's status (CPU and GPU temperature and load, GPU power, memory, how long it's been on), turn the screen off, restart Playnite, restart or shut down the PC (each asks first), and free space on each drive.
 
 The footer shows the controller's battery as a percentage, and a warning pops up when it runs low.
+
+**Any controller.** CouchKit reads controllers through XInput, so PlayStation and Switch controllers need a translator such as Steam Input or DS4Windows. CouchKit still recognises them and shows their own button faces and names: ✕ and ○, L1/R1 and "PS button" for PlayStation; L/R and "Home button" for Switch. Set `Controller.Style` to override it.
+
+**Plug and play.** Features whose apps aren't installed stay off quietly. Without Discord there's no Party tab; without OpenRGB or PlayniteAchievements, those parts simply don't show. System → CouchKit status lists what was found and how to set up the rest.
 
 **Notifications** collects what you might have missed while playing or while the Guide was open: Discord messages, missed calls, achievements, low battery and screenshots. Home shows them with an unread count.
 
@@ -148,6 +152,7 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Controller.GuideButton` | `true` | Tap the Xbox button to switch between the game and Playnite |
 | `Controller.GuideTapMaxMs` | `500` | Longer presses are left to Windows |
 | `Controller.DiscordButtons` | `true` | The Guide (double-tap the Xbox button) |
+| `Controller.Style` | `Auto` | Button faces and names in the Guide: `Auto` (detect), `Xbox`, `PlayStation`, `Switch` or `Generic` |
 | `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Mouse mode (from the Guide's Party tab), and the pointer's top speed in pixels per 30 ms |
 | `Display.KeepPlayniteOnTv` | `true` | Keep Playnite off the streaming display |
 | `Display.KeepGameOnTv` | `true` | Keep the running game off the streaming display |

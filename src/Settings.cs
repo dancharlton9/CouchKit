@@ -80,9 +80,10 @@ class ControllerSettings
     public int GuideTapMaxMs { get; set; }    // longer holds are left to Windows
     public bool MouseMode { get; set; }       // "Open Discord (mouse mode)" in the Guide: controller as mouse
     public double MouseSpeed { get; set; }    // pointer pixels per 30 ms at full tilt
-    public bool DiscordButtons { get; set; }  // double-tap the Xbox button for the Guide (Discord calls, mute, answer, hang up)
+    public bool DiscordButtons { get; set; }  // double-tap the Xbox button for the Guide
+    public string Style { get; set; }         // button faces and names in the Guide: Auto, Xbox, PlayStation, Switch, Generic
 
-    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; }
+    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; Style = "Auto"; }
 }
 
 class DisplaySettings
