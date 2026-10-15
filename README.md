@@ -1,5 +1,9 @@
 # CouchKit
 
+**[Website, screenshots and video →](https://dancharlton9.github.io/CouchKit/)** · [Download](https://github.com/dancharlton9/CouchKit/releases/latest) · [Support on Ko-fi ☕](https://ko-fi.com/fiisaac)
+
+![The Guide](docs/media/guide-demo.gif)
+
 Makes a Windows PC behave like a games console on the TV, around [Playnite](https://playnite.link/)'s fullscreen mode. It's for PCs that you also manage or stream from remotely with Moonlight, through [Sunshine](https://github.com/LizardByte/Sunshine) or [Apollo](https://github.com/ClassicOldSong/Apollo).
 
 CouchKit is a single small background app with no window. Each feature can be switched off.
@@ -27,9 +31,9 @@ CouchKit is a single small background app with no window. Each feature can be sw
 
 **The Guide: an Xbox-style guide on the TV**
 
-![The Guide](docs/party-demo.gif)
+![The Guide's Home tab](docs/media/guide-home-wide.jpg)
 
-*The Guide, call banner and corner HUD over a game ([full-quality video](docs/party-demo.mp4)).*
+*The Guide over a game ([full-quality video](docs/media/guide-demo.mp4)).*
 
 **Double-tap the Xbox button** to open the Guide over whatever is running. **LB/RB** switch tabs, the D-pad or left stick moves (hold to scroll, faster the longer you hold), **A** selects and **B** goes back. Discord is optional: without it there's no Party tab, and everything else works the same.
 - **Home:** what's playing (with its cover, how long this session has run, HowLongToBeat's estimates if you have that add-on, and achievement progress), **Notifications**, **Resume**, **Take a screenshot** (to PicturesCouchKit), **Close game**, and your recently played games from Playnite with cover art. Pick one to start it, or, while something is running, to **switch** to it: CouchKit closes the current game and starts the new one through Playnite.
@@ -216,6 +220,10 @@ When a game starts, the add-on writes its install folder to `%APPDATA%\CouchKit\
 Run `build.cmd`. It uses the C# compiler that comes with Windows (.NET Framework 4.8), so you don't need Visual Studio or an SDK. It produces `bin\CouchKit.exe` and the add-on `bin\CouchKit-<version>.pext`.
 
 The add-on is compiled against `Playnite.SDK.dll` from your Playnite install. If Playnite isn't in `%LOCALAPPDATA%\Playnite`, run `build.cmd -PlayniteDir "<folder>"`. The version number comes from the `VERSION` file.
+
+## Support
+
+CouchKit is free and MIT-licensed. If it makes your sofa a better place, you can [buy me a coffee on Ko-fi](https://ko-fi.com/fiisaac). Ideas and bug reports are welcome in [Issues](https://github.com/dancharlton9/CouchKit/issues).
 
 ## Licence
 

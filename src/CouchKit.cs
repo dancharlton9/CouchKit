@@ -576,6 +576,28 @@ static class CouchKit
             Pc.SensorsHelper(args[0] == "--sensors-copy");
             return;
         }
+        if (args.Length > 1 && args[0] == "--showcase")   // project-page stills and video frames, with made-up names
+        {
+            string note;
+            var ds = Settings.Load(out note);
+            ds.Discord.Favourites = new[]
+            {
+                new DiscordFavourite { Label = "Alex", Friend = "alex" },
+                new DiscordFavourite { Label = "Squad (Lobby)", Server = "Squad", Channel = "Lobby" },
+            };
+            ds.SmartHome = new SmartHomeSettings { HomeAssistantUrl = "http://showcase.invalid", HomeAssistantToken = "showcase",
+                LightScenes = new[] { "scene.gaming", "scene.movie_night", "script.party_mode", "scene.relax", "scene.bright" },
+                RoomLights = new[] { "light.ceiling", "light.lamp" } };
+            foreach (var kv in new Dictionary<string, string> { { "scene.gaming", "Gaming" }, { "scene.movie_night", "Movie night" }, { "script.party_mode", "Party mode" }, { "scene.relax", "Relax" }, { "scene.bright", "Bright" } })
+                SmartHome.PretendName(kv.Key, kv.Value);
+            SmartHome.Start(ds.SmartHome, ds.Lighting);
+            Directory.CreateDirectory(args[1]);
+            GuidePanel.Showcase(ds.Discord, args[1]);
+            string frames = Path.Combine(args[1], "frames");
+            Directory.CreateDirectory(frames);
+            GuidePanel.Demo(ds.Discord, frames, null);
+            return;
+        }
         if (args.Length > 1 && args[0] == "--demo")   // demo video frames: --demo <folder> [background image]
         {
             string note;

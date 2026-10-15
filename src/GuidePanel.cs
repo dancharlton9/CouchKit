@@ -1531,7 +1531,7 @@ static class GuidePanel
         Animations = false;   // still frames: everything where it ends up
         using (var fonts = new InstalledFontCollection())
             if (fonts.Families.Any(f => f.Name == "Segoe Fluent Icons")) iconFont = "Segoe Fluent Icons";
-        DiscordBridge.Running = true; DiscordBridge.InCall = true; DiscordBridge.CallName = "General / Charlton Home";
+        DiscordBridge.Running = true; DiscordBridge.InCall = true; DiscordBridge.CallName = "Lobby / Squad";
         lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
         Rebuild();
         selected = Selectable(1);
@@ -1556,7 +1556,7 @@ static class GuidePanel
         }
         Pc.Sample();
         Record("trophy", "Brotector", "Gears of War: E-Day  ·  15G", null);
-        Record("call", "Missed call from Matt", "Discord", null);
+        Record("call", "Missed call from Alex", "Discord", null);
         battery = "Medium"; batteryPct = "73%";
         for (int t = 1; t < Tabs.Length; t++)
         {
@@ -1568,9 +1568,9 @@ static class GuidePanel
         tab = 0;
         hudIcon = "micoff"; hudTitle = "Microphone muted"; hudDetail = "";
         render("hud-muted.png", 921, 172, PaintHud);
-        hudIcon = "message"; hudTitle = "Matt"; hudDetail = "2 new messages";
+        hudIcon = "message"; hudTitle = "Alex"; hudDetail = "2 new messages";
         render("hud-message.png", 921, 172, PaintHud);
-        DiscordBridge.InCall = false; DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Matt";
+        DiscordBridge.InCall = false; DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Alex";
         render("banner.png", 1766, 259, PaintBanner);
         items.Clear(); Rebuild(); selected = 0;
         render("panel-incoming.png", 1305, 2160, PaintPanel);
@@ -1580,7 +1580,7 @@ static class GuidePanel
         title = "Chats"; items = MockChats(); selected = 0;
         render("panel-chats.png", 1305, 2160, PaintPanel);
         parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
-        title = "Matt"; items = MockChat(); selected = 3;
+        title = "Alex"; items = MockChat(); selected = 3;
         render("panel-chat.png", 1305, 2160, PaintPanel);
         parents.Clear();
         // CouchKit status, and the footer and call banner for other controllers
@@ -1593,7 +1593,7 @@ static class GuidePanel
         {
             Pad.Style = k; tab = HomeTab; items = new List<Item>(); Rebuild(); selected = Selectable(0);
             render("panel-" + k.ToString().ToLowerInvariant() + ".png", 1305, 2160, PaintPanel);
-            DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Matt";
+            DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Alex";
             render("banner-" + k.ToString().ToLowerInvariant() + ".png", 1766, 259, PaintBanner);
             DiscordBridge.Incoming = false;
         }
@@ -1626,7 +1626,7 @@ static class GuidePanel
     {
         return new List<Item>
         {
-            new Item { Text = "Matt", Sub = "Online  ·  Playing Call of Duty", Badge = "2", Icon = "chat", Dot = Green, Submenu = () => null },
+            new Item { Text = "Alex", Sub = "Online  ·  Playing Call of Duty", Badge = "2", Icon = "chat", Dot = Green, Submenu = () => null },
             new Item { Text = "Sam", Sub = "Idle", Icon = "chat", Dot = StatusColour("Idle"), Submenu = () => null },
             new Item { Text = "Saturday squad", Sub = "Group of 5  ·  in a call", Icon = "people", Submenu = () => null },
             new Item { Text = "Alex", Sub = "Offline", Icon = "chat", Dot = StatusColour("Offline"), Submenu = () => null },
@@ -1637,12 +1637,12 @@ static class GuidePanel
     {
         return new List<Item>
         {
-            new Item { Text = "Call Matt", Icon = "call", Action = () => "" },
+            new Item { Text = "Call Alex", Icon = "call", Action = () => "" },
             new Item { Text = "Quick reply", Icon = "message", Submenu = () => null },
             Heading("Latest messages"),
-            new Item { Text = "Matt", Sub = "You on tonight? Thinking a few rounds of the new map then maybe some Gears if we've still got the energy for it", Wrap = true, Icon = "quote", Quiet = true },
-            new Item { Text = "Dan", Sub = "Yeah, give me 20 mins", Wrap = true, Icon = "quote", Quiet = true },
-            new Item { Text = "Matt", Sub = "👍", Wrap = true, Icon = "quote", Quiet = true },
+            new Item { Text = "Alex", Sub = "You on tonight? Thinking a few rounds of the new map then maybe some Gears if we've still got the energy for it", Wrap = true, Icon = "quote", Quiet = true },
+            new Item { Text = "You", Sub = "Yeah, give me 20 mins", Wrap = true, Icon = "quote", Quiet = true },
+            new Item { Text = "Alex", Sub = "👍", Wrap = true, Icon = "quote", Quiet = true },
         };
     }
 
@@ -1717,14 +1717,14 @@ static class GuidePanel
             frameTime = t;
             // --- Script ---
             // 1.0 HUD connected · 4.3 Guide in (Home, browse games) · 7.6 RB Party, down to Chats
-            // 9.8 A Chats · 11.0 A Matt's chat, down to the messages · 13.4 B, 13.8 B
+            // 9.8 A Chats · 11.0 A Alex's chat, down to the messages · 13.4 B, 13.8 B
             // 14.4 RB Audio, volume down · 17.2 RB Lights · 19.0 RB System · 20.6 Guide out
-            // 21.4 Matt calling · 23.6 tap: Answer · 24.9 HUD connected · 27.6 HUD muted
+            // 21.4 Alex calling · 23.6 tap: Answer · 24.9 HUD connected · 27.6 HUD muted
             DiscordBridge.Running = true;
             DiscordBridge.Incoming = t >= 21.4 && t < 24.6;
-            DiscordBridge.IncomingFrom = "Matt";
+            DiscordBridge.IncomingFrom = "Alex";
             DiscordBridge.InCall = t < 21.2 || t >= 24.6;
-            DiscordBridge.CallName = t < 21.2 ? "General / Charlton Home" : "Matt";
+            DiscordBridge.CallName = t < 21.2 ? "Lobby / Squad" : "Alex";
             DiscordBridge.Muted = t >= 27.6;
             double panelX = -1;   // fraction shown: 0 hidden .. 1 fully in
             if (t >= 4.3 && t < 20.9) panelX = t < 4.6 ? ease((t - 4.3) / 0.3) : t > 20.6 ? 1 - ease((t - 20.6) / 0.3) : 1;
@@ -1758,7 +1758,7 @@ static class GuidePanel
                             if (t >= 11.0 && t < 13.4)
                             {
                                 parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
-                                title = "Matt"; items = MockChat(); selected = Nth(presses(t, 11.6, 0.4, 4));
+                                title = "Alex"; items = MockChat(); selected = Nth(presses(t, 11.6, 0.4, 4));
                             }
                         }
                     }
@@ -1775,7 +1775,7 @@ static class GuidePanel
             wasShown = shown; lastTab = tab; lastDepth = parents.Count;
             hudIcon = t < 27.4 ? "people" : "micoff";
             hudTitle = t < 27.4 ? "Connected" : "Microphone muted";
-            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 27.4 ? "Matt" : "";
+            hudDetail = t < 4.2 ? "Lobby / Squad" : t < 27.4 ? "Alex" : "";
             double hudAlpha = Math.Max(window(t, 1.0, 4.0), Math.Max(window(t, 24.9, 27.4), window(t, 27.6, 30.2)));
             double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 21.4, 23.6) : 0;
             // --- Compose ---
@@ -1797,6 +1797,107 @@ static class GuidePanel
         bg.Dispose();
         PlayniteLink.Pretend = null;
         Clock = () => DateTime.Now;
+    }
+
+    // For the project page: CouchKit.exe --showcase <folder> renders 4K stills of the Guide and the
+    // pop-ups over a game's artwork, with made-up friends, servers and scenes.
+    public static void Showcase(DiscordSettings settings, string folder)
+    {
+        S = settings;
+        Animations = false;
+        using (var fonts = new InstalledFontCollection())
+            if (fonts.Families.Any(f => f.Name == "Segoe Fluent Icons")) iconFont = "Segoe Fluent Icons";
+        const int W = 3840, H = 2160;
+        var playing = PlayniteLink.Recent().FirstOrDefault(g => Achievements.ForGame(g.Id) != null) ?? PlayniteLink.Recent().FirstOrDefault();
+        if (playing == null) { CouchKit.Log("Showcase: no recent games"); return; }
+        PlayniteLink.Pretend = playing.Name;
+        Pc.Sample();
+        battery = "Full"; batteryPct = "92%";
+        lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
+        foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
+        DiscordBridge.Running = true; DiscordBridge.InCall = true; DiscordBridge.CallName = "Lobby / Squad";
+        Record("message", "Alex", "2 new messages", null);
+        var latest = Achievements.Recent(1).FirstOrDefault();
+        if (latest != null) Record("trophy", latest.Name, Join(latest.Game, latest.Points > 0 ? latest.Points + "G" : ""), latest.Icon);
+        unseen = 2;
+
+        Bitmap bg = new Bitmap(W, H);
+        using (var src = Image.FromFile(playing.Background))
+        using (var g = Graphics.FromImage(bg))
+        {
+            float scale = Math.Max((float)W / src.Width, (float)H / src.Height);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(src, (W - src.Width * scale) / 2, (H - src.Height * scale) / 2, src.Width * scale, src.Height * scale);
+        }
+        Action<string, bool, bool, bool> shot = (name, withPanel, withHud, withBanner) =>
+        {
+            using (var frame = new Bitmap(W, H))
+            using (var g = Graphics.FromImage(frame))
+            {
+                g.DrawImage(bg, 0, 0);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (withBanner) { int bw = W * 46 / 100, bh = H * 12 / 100; Composite(g, new Rectangle((W - bw) / 2, H * 4 / 100, bw, bh), bh / 5, 1, PaintBanner, Card); }
+                if (withHud)
+                {
+                    int hw = hudAchievement != null ? W * 30 / 100 : W * 24 / 100, hh = hudAchievement != null ? H * 10 / 100 : H * 8 / 100;
+                    Composite(g, new Rectangle(W - hw - W * 2 / 100, H * 3 / 100, hw, hh), hh / 4, 1, PaintHud, Card);
+                }
+                if (withPanel)
+                {
+                    using (var shade = new SolidBrush(Color.FromArgb(90, 0, 0, 0))) g.FillRectangle(shade, 0, 0, W, H);
+                    Composite(g, new Rectangle(0, 0, W * 34 / 100, H), 0, 1, PaintPanel, Back);
+                }
+                frame.Save(System.IO.Path.Combine(folder, name + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+            }
+        };
+        Action<int> top = t => { tab = t; parents.Clear(); title = Tabs[t]; items = new List<Item>(); selected = 0; firstVisible = 0; Rebuild(); };
+
+        top(HomeTab); selected = Math.Max(0, items.FindIndex(i => i.Text == "Achievements"));
+        shot("guide-home", true, false, false);
+        top(PartyTab); selected = Math.Max(0, items.FindIndex(i => i.Icon == "call"));
+        shot("guide-party", true, false, false);
+        tab = PartyTab; parents.Clear();
+        parents.Push(new Level { Title = "Party", Items = new List<Item>(), Selected = 0 });
+        parents.Push(new Level { Title = "Chats", Items = new List<Item>(), Selected = 0 });
+        title = "Alex"; items = MockChat(); selected = 3; firstVisible = 0;
+        shot("guide-chat", true, false, false);
+        if (Achievements.ForGame(playing.Id) != null)
+        {
+            tab = HomeTab; parents.Clear(); parents.Push(new Level { Title = "Home", Items = new List<Item>(), Selected = 0 });
+            title = "Achievements"; items = AchievementsMenu(playing.Id); selected = Selectable(0); firstVisible = 0;
+            shot("guide-achievements", true, false, false);
+        }
+        tab = AudioTab; parents.Clear(); title = Tabs[tab]; firstVisible = 0;
+        items = new List<Item>
+        {
+            Heading("Sound plays on"),
+            new Item { Text = "Wireless Gaming Headset", Sub = "Playing here now", Icon = "headset", Dot = Green },
+            new Item { Text = "Living room TV", Sub = "Switch the sound here", Icon = "tv" },
+            Heading("Volume"),
+            new Item { Text = "Game", Icon = "game", Level = 55, Adjust = d => 0 },
+            new Item { Text = "Discord", Icon = "chat", Level = 100, Adjust = d => 0 },
+            new Item { Text = "Everything", Icon = "volume", Level = 70, Adjust = d => 0 },
+        };
+        selected = 4;
+        shot("guide-audio", true, false, false);
+        top(LightsTab); selected = 1;
+        shot("guide-lights", true, false, false);
+        top(SystemTab); selected = 1;
+        shot("guide-system", true, false, false);
+        Pad.Style = Pad.Kind.PlayStation; top(HomeTab); selected = Selectable(1);
+        shot("guide-playstation", true, false, false);
+        Pad.Style = Pad.Kind.Xbox;
+        if (latest != null)
+        {
+            hudAchievement = latest; hudTitle = latest.Name; hudDetail = Join(latest.Points > 0 ? latest.Points + "G" : "", Achievements.RarityText(latest));
+            shot("popup-achievement", false, true, false);
+            hudAchievement = null;
+        }
+        DiscordBridge.InCall = false; DiscordBridge.Incoming = true; DiscordBridge.IncomingFrom = "Alex";
+        shot("popup-call", false, false, true);
+        DiscordBridge.Incoming = false;
+        bg.Dispose();
+        PlayniteLink.Pretend = null;
     }
 
     // Draws one of the windows (panel, banner, HUD) onto a frame: rounded, at an opacity

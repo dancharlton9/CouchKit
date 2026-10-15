@@ -171,6 +171,9 @@ static class SmartHome
     static readonly Dictionary<string, string> friendly = new Dictionary<string, string>();
 
     // An entity's friendly name ("Office Gaming"), looked up once
+    // --showcase: made-up scene names without asking Home Assistant
+    public static void PretendName(string entity, string name) { lock (friendly) friendly[entity] = name; }
+
     public static string NameOf(string entity)
     {
         lock (friendly) { string n; if (friendly.TryGetValue(entity, out n)) return n; }

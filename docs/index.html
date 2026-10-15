@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CouchKit: your Windows PC, as a console</title>
+<meta name="description" content="CouchKit turns a Windows PC running Playnite into a proper TV console: an Xbox-style guide, Discord parties, achievements, lighting that follows your game, all from the controller.">
+<meta property="og:title" content="CouchKit: your Windows PC, as a console">
+<meta property="og:description" content="An Xbox-style guide, Discord parties, achievements and lighting that follows your game, for Playnite on the TV. Free and open source.">
+<meta property="og:image" content="https://dancharlton9.github.io/CouchKit/media/guide-home-wide.jpg">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #100c1d; --bg2: #171229; --card: #211a3d; --card2: #2a2150;
+    --text: #ecebf5; --dim: #a19fbd; --line: rgba(255,255,255,.08);
+    --aqua: #00e1ff; --magenta: #ff00d4; --grad: linear-gradient(90deg, var(--aqua), var(--magenta));
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 "Outfit", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--aqua); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img, video { max-width: 100%; height: auto; display: block; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  .grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* Gradient outline, like the Guide's selected tab */
+  .outline { position: relative; border-radius: var(--radius); }
+  .outline::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px; background: var(--grad);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+
+  /* Nav */
+  nav { position: sticky; top: 0; z-index: 10; background: rgba(16,12,29,.82); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 21px; color: var(--text); }
+  .logo:hover { text-decoration: none; }
+  .logo .mark { width: 28px; height: 28px; border-radius: 8px; background: var(--grad); display: grid; place-items: center; }
+  .logo .mark svg { width: 17px; height: 17px; }
+  nav .links { display: flex; gap: 22px; margin-left: auto; align-items: center; }
+  nav .links a { color: var(--dim); font-size: 15px; }
+  nav .links a:hover { color: var(--text); text-decoration: none; }
+  nav .links a.kofi, nav .links a.kofi:hover { color: #fff; }
+
+  .btn { display: inline-flex; align-items: center; gap: 9px; padding: 12px 22px; border-radius: 999px; font-weight: 600; font-size: 16px; color: var(--text); background: var(--card); transition: transform .15s, background .15s; }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); background: var(--card2); }
+  .btn.primary { background: var(--grad); color: #0d0a18; }
+  .btn.primary:hover { background: var(--grad); filter: brightness(1.08); }
+  .btn svg { width: 18px; height: 18px; }
+  nav .btn { padding: 8px 16px; font-size: 14px; }
+
+  /* Hero */
+  .hero { padding: 72px 0 40px; text-align: center; position: relative; overflow: hidden; }
+  .hero::before { content: ""; position: absolute; inset: -40% -10% auto; height: 700px; background: radial-gradient(closest-side, rgba(0,225,255,.16), transparent), radial-gradient(closest-side at 70% 50%, rgba(255,0,212,.14), transparent); filter: blur(30px); z-index: -1; }
+  .eyebrow { display: inline-block; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--aqua); font-weight: 600; margin-bottom: 18px; }
+  h1 { font-size: clamp(40px, 6.4vw, 76px); line-height: 1.04; margin: 0 0 22px; font-weight: 700; letter-spacing: -.02em; }
+  .lede { font-size: clamp(18px, 2.1vw, 21px); color: var(--dim); max-width: 760px; margin: 0 auto 32px; }
+  .ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .small { font-size: 14px; color: var(--dim); }
+  .video { margin: 48px auto 0; max-width: 1080px; padding: 2px; background: var(--grad); border-radius: 20px; box-shadow: 0 40px 120px -30px rgba(255,0,212,.35), 0 30px 80px -40px rgba(0,225,255,.35); }
+  .video video { border-radius: 18px; width: 100%; background: #000; aspect-ratio: 16 / 9; }
+
+  section { padding: 84px 0; }
+  section.alt { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; margin: 0 0 14px; letter-spacing: -.01em; }
+  .sub { color: var(--dim); max-width: 720px; margin: 0 0 40px; font-size: 18px; }
+
+  /* Guide tour */
+  .tour { display: grid; grid-template-columns: 380px 1fr; gap: 48px; align-items: center; }
+  .tour .shot { padding: 2px; background: var(--grad); border-radius: 22px; max-width: 380px; }
+  .tour .shot img { border-radius: 20px; width: 100%; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .tab { border: 0; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600; color: var(--dim); background: var(--card); padding: 9px 16px; border-radius: 999px; }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--card2); box-shadow: inset 0 0 0 2px transparent; position: relative; }
+  .tab[aria-selected="true"]::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px; background: var(--grad); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  .tab-copy h3 { font-size: 28px; margin: 0 0 10px; }
+  .tab-copy p { color: var(--dim); margin: 0 0 14px; }
+  .tab-copy ul { margin: 0; padding-left: 20px; color: var(--text); }
+  .tab-copy li { margin: 6px 0; }
+  .tab-copy li::marker { color: var(--magenta); }
+  .hint { margin-top: 22px; display: flex; gap: 18px; flex-wrap: wrap; color: var(--dim); font-size: 14px; }
+  .hint b { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 12px; margin-right: 6px; border: 2px solid; }
+
+  /* Pop-ups */
+  .pops { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .pop { background: var(--card); border-radius: var(--radius); overflow: hidden; }
+  .pop img { aspect-ratio: 16 / 9; object-fit: cover; object-position: top; width: 100%; }
+  .pop div { padding: 18px 22px 22px; }
+  .pop h3 { margin: 0 0 6px; font-size: 20px; }
+  .pop p { margin: 0; color: var(--dim); font-size: 16px; }
+
+  /* Features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .feature { background: var(--card); border-radius: var(--radius); padding: 26px; }
+  .feature .ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px; background: linear-gradient(135deg, rgba(0,225,255,.18), rgba(255,0,212,.18)); }
+  .feature .ic svg { width: 22px; height: 22px; stroke: url(#g); }
+  .feature h3 { margin: 0 0 8px; font-size: 19px; }
+  .feature p { margin: 0; color: var(--dim); font-size: 15.5px; }
+  .tag { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; margin-left: 6px; vertical-align: 2px; }
+
+  /* Controllers */
+  .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+  .pads .shot { padding: 2px; background: var(--grad); border-radius: 22px; max-width: 340px; justify-self: center; }
+  .pads .shot img { border-radius: 20px; }
+  .faces { display: flex; gap: 14px; margin: 18px 0 6px; flex-wrap: wrap; }
+  .face { background: var(--card); border-radius: 14px; padding: 12px 16px; font-size: 14px; color: var(--dim); }
+  .face strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 2px; }
+
+  /* Install */
+  .steps { counter-reset: s; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .step { background: var(--card); border-radius: var(--radius); padding: 26px 26px 24px; position: relative; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; top: -16px; left: 24px; width: 34px; height: 34px; border-radius: 50%; background: var(--grad); color: #0d0a18; font-weight: 700; display: grid; place-items: center; }
+  .step h3 { margin: 8px 0 8px; font-size: 19px; }
+  .step p { margin: 0; color: var(--dim); font-size: 15.5px; }
+  .reqs { margin-top: 30px; color: var(--dim); font-size: 15px; }
+  .reqs strong { color: var(--text); }
+  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: .9em; background: rgba(255,255,255,.07); padding: 1px 6px; border-radius: 6px; }
+
+  /* Support */
+  .support { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center; background: var(--card); border-radius: 26px; padding: 44px; }
+  .support h2 { margin-bottom: 12px; }
+  .support p { color: var(--dim); margin: 0 0 22px; }
+  .kofi { background: #ff5e5b; color: #fff; }
+  .kofi:hover { background: #ff7472; }
+  .heart { font-size: 92px; line-height: 1; text-align: center; }
+  .heart span { display: block; font-size: 15px; color: var(--dim); margin-top: 12px; }
+
+  footer { padding: 40px 0 60px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
+
+  @media (max-width: 900px) {
+    .tour, .pads, .support { grid-template-columns: 1fr; }
+    .tour .shot { margin: 0 auto; }
+    .grid, .steps { grid-template-columns: 1fr 1fr; }
+    .pops { grid-template-columns: 1fr; }
+    nav .links a:not(.btn) { display: none; }
+  }
+  @media (max-width: 600px) {
+    .grid, .steps { grid-template-columns: 1fr; }
+    .support { padding: 28px; }
+    .heart { display: none; }
+    section { padding: 64px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00e1ff"/><stop offset="1" stop-color="#ff00d4"/></linearGradient></defs></svg>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#0d0a18" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg></span>CouchKit</a>
+    <div class="links">
+      <a href="#guide">The Guide</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/dancharlton9/CouchKit">GitHub</a>
+      <a class="btn kofi" href="https://ko-fi.com/fiisaac">♥ Support</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Free &amp; open source · for Playnite on Windows</span>
+    <h1>Your gaming PC,<br><span class="grad-text">as a console.</span></h1>
+    <p class="lede">CouchKit turns a Windows PC running Playnite into a proper living-room console. It adds an Xbox-style guide, Discord parties, achievements, and lighting that follows your game, all from the controller, with no keyboard or mouse needed.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/dancharlton9/CouchKit/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>Download for Playnite</a>
+      <a class="btn" href="https://github.com/dancharlton9/CouchKit"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.56-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>View on GitHub</a>
+    </div>
+    <p class="small">Installs as a Playnite add-on · Windows 10 &amp; 11 · MIT licence</p>
+    <div class="video">
+      <video src="media/guide-demo.mp4" poster="media/guide-home-wide.jpg" autoplay muted loop playsinline controls preload="metadata" aria-label="The Guide in action: browsing games, Discord, audio, lights and system, then answering a call"></video>
+    </div>
+  </div>
+</header>
+
+<section id="guide" class="alt">
+  <div class="wrap">
+    <h2>Double-tap the Xbox button. <span class="grad-text">There's the Guide.</span></h2>
+    <p class="sub">A console-style guide slides in over whatever you're playing, with no alt-tabbing and no desktop. Switch tabs with LB and RB, move with the D-pad or stick, and press A to select.</p>
+    <div class="tour">
+      <div class="shot"><img id="tour-img" src="media/guide-home.jpg" alt="The Guide's Home tab" width="640" height="1059"></div>
+      <div>
+        <div class="tabs" role="tablist" aria-label="Guide tabs">
+          <button class="tab" role="tab" aria-selected="true" data-i="0">Home</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="1">Party</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="2">Chats</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="3">Achievements</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="4">Audio</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="5">Lights</button>
+          <button class="tab" role="tab" aria-selected="false" data-i="6">System</button>
+        </div>
+        <div class="tab-copy" id="tour-copy" aria-live="polite"></div>
+        <div class="hint"><span><b style="color:#23a55a">A</b>select</span><span><b style="color:#f23f43">B</b>back</span><span><b style="color:#a19fbd;font-size:10px">LB</b><b style="color:#a19fbd;font-size:10px">RB</b>tabs</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Pop-ups that <span class="grad-text">don't steal focus.</span></h2>
+    <p class="sub">Calls, messages and achievements appear over the game without taking the controller away from it. They're big enough to read from the sofa.</p>
+    <div class="pops">
+      <figure class="pop" style="margin:0"><img src="media/popup-achievement-wide.jpg" alt="An achievement unlocked pop-up over a game" loading="lazy"><div><h3>Achievement unlocked</h3><p>The achievement's icon, gamerscore and rarity, plus a buzz on the controller. It works with Steam and Xbox through the PlayniteAchievements add-on.</p></div></figure>
+      <figure class="pop" style="margin:0"><img src="media/popup-call-wide.jpg" alt="An incoming Discord call banner over a game" loading="lazy"><div><h3>Someone's calling</h3><p>An incoming Discord call shows a banner and buzzes the controller. Tap the Xbox button, then press A to answer.</p></div></figure>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <h2>Everything a console does, <span class="grad-text">on your PC.</span></h2>
+    <p class="sub">Every feature is optional and switches itself off if the app it needs isn't installed. Set it all up from Playnite's add-on settings, without editing config files.</p>
+    <div class="grid">
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="6"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg></div><h3>The Xbox button, fixed</h3><p>Tap it to flip between the game and Playnite. Hold Back + Start to close a game, and keep holding to force-close it.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Always on the TV</h3><p>Playnite and games stay on the TV, even after streaming with Sunshine, Apollo or Moonlight. Sound switches to your headset when it's on and back to the TV when it's off.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M17 20h5v-2a3 3 0 0 0-5.36-1.86M17 20H7m10 0v-2c0-.66-.13-1.28-.36-1.86M7 20H2v-2a3 3 0 0 1 5.36-1.86M7 20v-2c0-.66.13-1.28.36-1.86m0 0a5 5 0 0 1 9.28 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg></div><h3>Discord parties</h3><p>Call friends, join voice channels, read and reply to messages, and mute or deafen, all from the Guide. It uses Discord's own mute, so in-game chat keeps working. <span class="tag">English Discord</span></p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4ZM17 6h3v1a3 3 0 0 1-3 3M7 6H4v1a3 3 0 0 0 3 3"/></svg></div><h3>Achievements</h3><p>Progress on the now-playing card, a full list for the game you're playing, your recent unlocks across every game, and a proper TV pop-up when you unlock one.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.74V17h8v-2.26A7 7 0 0 0 12 2Z"/></svg></div><h3>Lighting that plays along</h3><p>Smooth, animated gradients on every RGB device OpenRGB can drive. While you play, the colours come from the game's artwork.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 10.5 12 3l9 7.5V21H3V10.5Z"/><path d="M9 21v-6h6v6"/></svg></div><h3>Smart home</h3><p>Home Assistant scenes and room lights from the Guide. Your Nanoleaf panels and room lights can follow the game's colours, then go back to normal afterwards.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></div><h3>Audio mixer</h3><p>Choose where sound plays and balance the game against Discord. Turn the game down without your friends getting quieter.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></div><h3>PC status</h3><p>CPU and GPU temperatures and load, memory, uptime and drive space at a glance, plus screen off, restart and shut down from the sofa.</p></div>
+      <div class="feature"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-4-5.66V5a2 2 0 1 0-4 0v.34A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9"/></svg></div><h3>Notifications &amp; screenshots</h3><p>Missed calls, messages, achievements and low controller battery are all kept in one place. Take a screenshot from the Guide without leaving the game.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap pads">
+    <div>
+      <h2>Not using an Xbox pad? <span class="grad-text">It notices.</span></h2>
+      <p class="sub" style="margin-bottom:10px">CouchKit recognises PlayStation and Switch controllers used through Steam Input or DS4Windows, and the Guide speaks their language.</p>
+      <div class="faces">
+        <div class="face"><strong>PlayStation</strong>✕ ○ · L1 / R1 · PS button</div>
+        <div class="face"><strong>Switch</strong>A B · L / R · Home button</div>
+        <div class="face"><strong>Xbox &amp; others</strong>A B · LB / RB · Guide button</div>
+      </div>
+    </div>
+    <div class="shot"><img src="media/guide-playstation.jpg" alt="The Guide with PlayStation button faces" loading="lazy" width="640" height="1059"></div>
+  </div>
+</section>
+
+<section id="install" class="alt">
+  <div class="wrap">
+    <h2>Up and running <span class="grad-text">in two minutes.</span></h2>
+    <p class="sub">CouchKit is a Playnite add-on. It installs, starts and updates itself with Playnite.</p>
+    <div class="steps">
+      <div class="step"><h3>Download</h3><p>Get the latest <code>CouchKit-x.y.z.pext</code> from <a href="https://github.com/dancharlton9/CouchKit/releases/latest">Releases</a> and double-click it. Playnite asks to install it.</p></div>
+      <div class="step"><h3>Set it up</h3><p>In Playnite's desktop mode, open <strong>Add-ons → Extension settings → CouchKit</strong>. Pick your TV and headset, and switch on what you want.</p></div>
+      <div class="step"><h3>Grab the controller</h3><p>Switch Playnite to fullscreen mode and double-tap the Xbox button. <strong>System → CouchKit status</strong> shows what's working.</p></div>
+    </div>
+    <p class="reqs"><strong>Needs</strong> Windows 10 or 11 and Playnite 10, used in fullscreen mode. <strong>Optional:</strong> an Xbox (or translated) controller · OpenRGB for lighting · Discord · PlayniteAchievements and HowLongToBeat add-ons · Home Assistant or Nanoleaf · FanControl for CPU temperature · Sunshine, Apollo or Moonlight for streaming.</p>
+  </div>
+</section>
+
+<section id="support">
+  <div class="wrap">
+    <div class="support outline">
+      <div>
+        <h2>Free, open, and <span class="grad-text">made with love.</span></h2>
+        <p>CouchKit started as a fix for one living-room PC and grew from there. It's free and MIT-licensed, and it will stay that way. If it makes your sofa a better place, a coffee keeps it going: it pays for the hours that go into new features and fixes.</p>
+        <div class="ctas" style="justify-content:flex-start;margin:0">
+          <a class="btn kofi" href="https://ko-fi.com/fiisaac">☕ Buy me a coffee on Ko-fi</a>
+          <a class="btn" href="https://github.com/dancharlton9/CouchKit/issues">Ideas &amp; bugs</a>
+        </div>
+      </div>
+      <div class="heart">🎮<span>Star it on GitHub, tell a friend, or share a screenshot of your setup.</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>CouchKit · MIT licence · by Dan Charlton</span>
+    <span><a href="https://github.com/dancharlton9/CouchKit">GitHub</a> · <a href="https://github.com/dancharlton9/CouchKit/releases">Releases</a> · <a href="https://ko-fi.com/fiisaac">Ko-fi</a></span>
+    <span>Not affiliated with Microsoft, Xbox, Sony, Nintendo, Discord or Playnite. Game artwork belongs to its owners.</span>
+  </div>
+</footer>
+
+<script>
+  // The Guide tour: each tab shows its screenshot and a short description
+  var tabs = [
+    { img: "guide-home", title: "Home", text: "What you're playing, with its cover, session time, HowLongToBeat estimates and achievement progress. Your recent games are a button away.", points: ["Resume, screenshot or close the game", "Switch games: it closes one and starts the next", "Notifications with an unread count"] },
+    { img: "guide-party", title: "Party", text: "Discord without leaving the game: your current call, favourite friends and channels, and their online status.", points: ["Call a friend or join a voice channel in one press", "Mute and deafen use Discord's own controls, so in-game chat is unaffected", "Answer incoming calls from the Guide"] },
+    { img: "guide-chat", title: "Chats", text: "Read the latest messages in any DM or group chat, call them, or send a quick reply, all with the D-pad.", points: ["Unread counts and what friends are playing", "Quick replies you choose yourself", "See who's in each voice channel"] },
+    { img: "guide-achievements", title: "Achievements", text: "Every achievement for the game you're playing. Unlocked ones show when and how rare they are; locked ones show what to do and how close you are.", points: ["Steam and Xbox, via PlayniteAchievements", "Progress bars for counting achievements", "Secret ones stay secret"] },
+    { img: "guide-audio", title: "Audio", text: "Choose where the sound goes and balance the mix from the sofa.", points: ["TV or headset, with one press", "Game, Discord and everything, each with its own level", "Hold left or right to sweep the volume"] },
+    { img: "guide-lights", title: "Lights", text: "Your Home Assistant scenes and room lights, plus the PC's own lighting.", points: ["Scenes and scripts you pick", "Room lights on and off", "PC lighting follows the game's colours"] },
+    { img: "guide-system", title: "System", text: "How the PC is doing, and the power buttons you'd otherwise need a keyboard for.", points: ["CPU and GPU temperature, load and power", "Free space on every drive", "Screen off, restart Playnite, restart or shut down", "CouchKit status: what's working and how to set up the rest"] },
+  ];
+  var img = document.getElementById("tour-img"), copy = document.getElementById("tour-copy");
+  function show(i) {
+    var t = tabs[i];
+    img.src = "media/" + t.img + ".jpg";
+    img.alt = "The Guide's " + t.title + " tab";
+    copy.innerHTML = "<h3>" + t.title + "</h3><p>" + t.text + "</p><ul>" + t.points.map(function (p) { return "<li>" + p + "</li>"; }).join("") + "</ul>";
+    document.querySelectorAll(".tab").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.i == i ? "true" : "false"); });
+  }
+  document.querySelectorAll(".tab").forEach(function (b) { b.addEventListener("click", function () { show(+b.dataset.i); }); });
+  tabs.forEach(function (t) { new Image().src = "media/" + t.img + ".jpg"; });   // preload
+  show(0);
+</script>
+</body>
+</html>
