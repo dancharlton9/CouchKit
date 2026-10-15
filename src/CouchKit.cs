@@ -556,6 +556,21 @@ static class CouchKit
 
     static void Main(string[] args)
     {
+        if (args.Length > 1 && args[0] == "--list")   // for the Playnite settings page: audio outputs as JSON
+        {
+            try
+            {
+                var names = OutputDevices().Select(d => d.Item1).ToList();
+                File.WriteAllText(args[1], new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new { Audio = names }));
+            }
+            catch (Exception ex) { File.WriteAllText(args[1], "{\"Error\":" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(ex.Message) + "}"); }
+            return;
+        }
+        if (args.Length > 0 && args[0] == "--install-sensors")   // run as admin from the settings page
+        {
+            Pc.InstallSensorsTask();
+            return;
+        }
         if (args.Length > 0 && (args[0] == "--sensors" || args[0] == "--sensors-copy"))   // admin helper: FanControl's sensors to sensors.json
         {
             Pc.SensorsHelper(args[0] == "--sensors-copy");

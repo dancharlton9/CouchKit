@@ -32,9 +32,30 @@ public class CouchKitPlugin : GenericPlugin
     static readonly Guid PluginId = Guid.Parse("6f0c6a51-8d0b-4c41-9a38-2b1f4f6d7c11");
     public override Guid Id { get { return PluginId; } }
 
+    readonly CouchKitSettings settings = new CouchKitSettings();
+
     public CouchKitPlugin(IPlayniteAPI api) : base(api)
     {
-        Properties = new GenericPluginProperties { HasSettings = false };
+        Properties = new GenericPluginProperties { HasSettings = true };
+        settings.Saved = RestartCouchKit;
+    }
+
+    // Add-ons → Extension settings → CouchKit
+    public override ISettings GetSettings(bool firstRunSettings) { return settings; }
+    public override System.Windows.Controls.UserControl GetSettingsView(bool firstRunView) { return new SettingsPage(settings); }
+
+    // After saving settings: CouchKit reads couchkit.json when it starts
+    static void RestartCouchKit()
+    {
+        try
+        {
+            string exe = Path.Combine(RunDir, "CouchKit.exe");
+            foreach (var p in Process.GetProcessesByName("CouchKit").Where(p => string.Equals(ImagePath(p), exe, StringComparison.OrdinalIgnoreCase)))
+            { p.Kill(); p.WaitForExit(5000); }
+            if (File.Exists(exe)) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = RunDir });
+            logger.Info("CouchKit: restarted with the new settings");
+        }
+        catch (Exception ex) { logger.Error(ex, "CouchKit: could not restart CouchKit.exe"); }
     }
 
     public override void OnApplicationStarted(OnApplicationStartedEventArgs args)

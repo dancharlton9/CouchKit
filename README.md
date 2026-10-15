@@ -133,7 +133,9 @@ $dir = Join-Path $env:APPDATA 'CouchKit'; [IO.File]::Delete("$dir\current-game.t
 
 ## Settings
 
-`couchkit.json` only needs the values you want to change. Anything left out keeps its default. A typical file:
+**The easy way:** in Playnite's desktop mode, open **Add-ons → Extension settings → Generic → CouchKit**. Every feature has a toggle there. Audio devices are chosen from a list, and there are buttons to test Home Assistant, pair Nanoleaf panels, and set up the CPU temperature helper. Saving restarts CouchKit with the new settings. On the TV, **System → CouchKit status** in the Guide shows what's working and what still needs setting up.
+
+The settings page edits `%APPDATA%CouchKitcouchkit.json`, which you can also edit by hand. It keeps a backup of the previous version as `couchkit.json.bak`. `couchkit.json` only needs the values you want to change. Anything left out keeps its default. A typical file:
 
 ```json
 {

@@ -32,8 +32,9 @@ if ($LASTEXITCODE) { throw 'CouchKit.exe build failed' }
 
 $sdk = Join-Path $PlayniteDir 'Playnite.SDK.dll'
 if (-not (Test-Path $sdk)) { Write-Warning "Playnite.SDK.dll not found in $PlayniteDir; skipping the Playnite add-on"; return }
+$json = Join-Path $PlayniteDir 'Newtonsoft.Json.dll'   # ships with Playnite; the settings page edits couchkit.json with it
 & $csc /nologo /target:library /optimize /r:$sdk /r:"$wpf\PresentationFramework.dll" /r:"$wpf\PresentationCore.dll" /r:"$wpf\WindowsBase.dll" /r:System.Xaml.dll `
-    /out:obj\CouchKit.Playnite.dll playnite\CouchKitPlugin.cs obj\Version.cs
+    /r:$json /out:obj\CouchKit.Playnite.dll (Get-ChildItem playnite\*.cs).FullName obj\Version.cs
 if ($LASTEXITCODE) { throw 'Playnite add-on build failed' }
 
 $stage = 'obj\pext'

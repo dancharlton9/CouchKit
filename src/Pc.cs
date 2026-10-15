@@ -164,6 +164,32 @@ static class Pc
 
     // --- The sensors helper (runs with admin rights) ---
 
+    // Registers "CouchKit sensors": at sign-in, with admin rights, no time limit; then starts it.
+    // Run as admin (the settings page asks Windows to elevate CouchKit.exe --install-sensors).
+    public static void InstallSensorsTask()
+    {
+        string exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchKit", "CouchKit.exe");
+        string user = Environment.UserDomainName + "\\" + Environment.UserName;
+        string xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" +
+            "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">" +
+            "<RegistrationInfo><Description>Reads CPU and GPU temperatures from FanControl for the CouchKit Guide (read-only)</Description></RegistrationInfo>" +
+            "<Triggers><LogonTrigger><Enabled>true</Enabled><UserId>" + System.Security.SecurityElement.Escape(user) + "</UserId></LogonTrigger></Triggers>" +
+            "<Principals><Principal id=\"Author\"><UserId>" + System.Security.SecurityElement.Escape(user) + "</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>" +
+            "<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" +
+            "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit><StartWhenAvailable>true</StartWhenAvailable><Enabled>true</Enabled></Settings>" +
+            "<Actions Context=\"Author\"><Exec><Command>" + System.Security.SecurityElement.Escape(exe) + "</Command><Arguments>--sensors</Arguments></Exec></Actions></Task>";
+        string file = Path.Combine(Path.GetTempPath(), "couchkit-sensors-task.xml");
+        File.WriteAllText(file, xml, System.Text.Encoding.Unicode);
+        Func<string, int> schtasks = a =>
+        {
+            using (var p = Process.Start(new ProcessStartInfo("schtasks.exe", a) { UseShellExecute = false, CreateNoWindow = true })) { p.WaitForExit(15000); return p.ExitCode; }
+        };
+        int created = schtasks("/Create /TN \"CouchKit sensors\" /XML \"" + file + "\" /F");
+        File.Delete(file);
+        CouchKit.Log(created == 0 ? "Sensors helper task installed" : "Sensors helper task: schtasks failed (" + created + ")");
+        if (created == 0) schtasks("/Run /TN \"CouchKit sensors\"");
+    }
+
     // CouchKit.exe --sensors: copies itself aside first, so the Playnite add-on can still update
     // CouchKit.exe while the helper runs, then the copy loops reading FanControl.
     public static void SensorsHelper(bool isCopy)
