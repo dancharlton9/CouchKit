@@ -26,26 +26,35 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - Plays a **flowing animation in the game's colours on Nanoleaf panels**, then puts back whatever they were showing.
 
 **Party: Discord from the controller** (optional)
-- Discord has no console-style "transfer call" for PCs, so CouchKit drives the Discord desktop app through Windows accessibility, the same way a screen reader does, while Discord stays minimised behind Playnite or the game.
-- **Back + Y** opens the **Party panel** on the TV: call a favourite friend, join a favourite voice channel, mute, deafen, leave, or open Discord with **mouse mode**.
-- **Back + LB** toggles Discord's own mute. One long buzz means muted, two short means live. It's Discord's mute, not the Windows microphone, so in-game voice chat isn't affected.
-- **Incoming calls** show a banner on the TV and rumble the controller. **Back + A** answers, **Back + B** declines or hangs up.
-- **Mouse mode** (**Back + RB**): left stick moves the pointer, A clicks, B right-clicks, right stick scrolls. It works for any desktop app.
+
+![Party panel demo](docs/party-demo.gif)
+
+*The Party panel, call banner and corner HUD over a game ([full-quality video](docs/party-demo.mp4)).*
+
+Discord has no console-style "transfer call" for PCs, so CouchKit drives the Discord desktop app through Windows accessibility, the same way a screen reader does, while Discord stays minimised behind Playnite or the game. Nothing extra is installed in Discord.
+- **Double-tap the Xbox button** to open the **Party panel**, an Xbox-guide-style menu on the TV:
+  - **Status card:** your current call with its name and microphone state, or who's calling.
+  - **Favourites:** call a friend or join a voice channel in one press. Friends show their online status.
+  - **Chats:** your recent DMs and group chats, read live from Discord, with status and unread counts. Calling a group chat rings everyone.
+  - **Voice channels:** pick a server, then a channel.
+  - **Volume:** game, Discord and everything, adjusted with D-pad left/right.
+  - Mute, deafen, leave, and **Open Discord** in **mouse mode** (left stick moves the pointer, A clicks, B right-clicks, right stick scrolls).
+- **Incoming calls** show a banner on the TV and buzz the controller. **Tap** the Xbox button and the panel opens with **Answer** selected.
+- **Corner HUD:** a brief top-right message when you connect or hang up, mute or unmute, or get new DMs. It never takes focus from the game.
+- **Mute** is Discord's own mute, not the Windows microphone, so in-game voice chat isn't affected.
+- There are **no button combos**: Playnite and games see every normal button, so anything held together with them would leak through.
 
 **Headset** (optional)
 - While a configured headset is switched on, sound and the default microphone go to it. When it's switched off, they go back to the TV.
 
 ### Controller at a glance
 
-| Hold | Does |
+| Press | Does |
 |---|---|
-| Back + Start | Close the game (keep holding to force-close) |
-| Xbox button (tap) | Switch between the game and Playnite |
-| Back + Y | Party panel (D-pad moves, A selects, B closes) |
-| Back + LB | Discord mute / unmute |
-| Back + A | Answer an incoming Discord call |
-| Back + B | Hang up, or decline an incoming call |
-| Back + RB | Mouse mode on / off |
+| Xbox button (tap) | Switch between the game and Playnite. While a call is ringing, open the panel to answer |
+| Xbox button (double-tap) | Party panel, or leave mouse mode |
+| In the panel | D-pad moves, left/right changes volume, A selects, B goes back |
+| Hold Back + Start | Close the game (keep holding to force-close) |
 
 ## Requirements
 
@@ -105,8 +114,8 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Controller.CloseHoldMs` / `KillHoldMs` | `1500` / `4000` | How long to hold Back + Start to close / force-close the game |
 | `Controller.GuideButton` | `true` | Tap the Xbox button to switch between the game and Playnite |
 | `Controller.GuideTapMaxMs` | `500` | Longer presses are left to Windows |
-| `Controller.DiscordButtons` | `true` | The Back + Y / LB / A / B Discord controls |
-| `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Back + RB mouse mode, and the pointer's top speed in pixels per 30 ms |
+| `Controller.DiscordButtons` | `true` | The Party panel (double-tap the Xbox button) |
+| `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Mouse mode (from the Party panel), and the pointer's top speed in pixels per 30 ms |
 | `Display.KeepPlayniteOnTv` | `true` | Keep Playnite off the streaming display |
 | `Display.KeepGameOnTv` | `true` | Keep the running game off the streaming display |
 | `Display.MuteWhileStreaming` | `true` | Mute Playnite and the game while a stream is connected |
@@ -149,6 +158,11 @@ Put the returned `auth_token` in `SmartHome.NanoleafToken`, and the IP address i
 ## How it decides what "the game" is
 
 When a game starts, the add-on writes its install folder to `%APPDATA%\CouchKit\current-game.txt`. CouchKit treats any program running from that folder as the game. For emulated games, the install folder is usually the ROM folder, so it uses whichever program is running from `EmulatorFolders`. If no Playnite game is running, Back + Start closes whatever is in front, unless that's a protected program such as Explorer, Playnite, Steam or Sunshine/Apollo.
+
+## Development
+
+- `CouchKit.exe --preview <folder>` draws the Party panel, banner and HUD to PNGs at 4K, for checking the design.
+- `CouchKit.exe --demo <folder> <image>` renders the scripted demo above as 1080p30 PNG frames. Encode with `ffmpeg -framerate 30 -i <folder>\f%04d.png -c:v libx264 -pix_fmt yuv420p demo.mp4`.
 
 ## Building
 
