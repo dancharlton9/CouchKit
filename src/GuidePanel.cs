@@ -810,12 +810,13 @@ static class GuidePanel
                 var r = new Rectangle(x - unit / 2, y, w + unit, rowH);
                 if (sel)
                 {
+                    // Selected: a card with the aqua-to-magenta outline, like the current tab
                     using (var path = RoundedPath(r, unit * 0.5f))
                     {
                         using (var card = new SolidBrush(Card)) g.FillPath(card, path);
-                        using (var edge = new Pen(Color.FromArgb(70, Aqua), unit / 14f)) g.DrawPath(edge, path);
+                        using (var edge = new LinearGradientBrush(r, Aqua, Magenta, LinearGradientMode.Horizontal))
+                        using (var pen = new Pen(edge, unit / 10f)) g.DrawPath(pen, path);
                     }
-                    using (var edge = new LinearGradientBrush(r, Aqua, Magenta, LinearGradientMode.Vertical)) g.FillRectangle(edge, r.Left, r.Top + unit / 3, unit / 5, r.Height - unit * 2 / 3);
                 }
                 int textX = x + unit / 2;
                 var cover = Cover(item.Game);
