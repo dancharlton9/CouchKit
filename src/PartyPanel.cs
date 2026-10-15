@@ -767,6 +767,7 @@ static class PartyPanel
         int panelW = W * 34 / 100, hudW = W * 24 / 100, hudH = H * 8 / 100, banW = W * 46 / 100, banH = H * 12 / 100;
         lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
 
+        foreach (var e in SmartHome.Scenes) { string sn = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = sn; }   // scene names for the Lights tab
         Bitmap bg = new Bitmap(W, H);
         using (var src = Image.FromFile(background))
         using (var g = Graphics.FromImage(bg))
@@ -789,44 +790,58 @@ static class PartyPanel
             new Item { Text = "Everything", Icon = "volume", Level = 60, Adjust = d => 0 },
         };
 
-        int frames = (int)(21.5 * Fps);
+        // Audio tab with example outputs (the real one lists whatever is plugged in)
+        var audio = new List<Item>
+        {
+            new Item { Text = "CORSAIR VIRTUOSO SE Wireless Gaming Headset", Icon = "headset", Dot = Green },
+            new Item { Text = "Play on LG TV SSCR2", Icon = "tv" },
+        };
+        audio.AddRange(volume);
+        audio.Add(new Item { Text = "Close", Icon = "close" });
+        battery = "Full";
+
+        int frames = (int)(24.5 * Fps);
         for (int n = 0; n < frames; n++)
         {
             double t = (double)n / Fps;
             // --- Script ---
+            // 1.0 HUD connected · 4.4 Guide in (Party) · 6.6 RB Audio, volume down · 9.6 RB Lights · 11.4 RB System
+            // 12.8 Guide out · 13.4 Matt calling · 15.6 tap: Answer · 16.9 HUD connected · 19.6 HUD muted
             DiscordBridge.Running = true;
-            DiscordBridge.Incoming = t >= 10.8 && t < 14.6;
+            DiscordBridge.Incoming = t >= 13.4 && t < 16.6;
             DiscordBridge.IncomingFrom = "Matt";
-            DiscordBridge.InCall = t < 10.6 || t >= 14.6;
-            DiscordBridge.CallName = t < 10.6 ? "General / Charlton Home" : "Matt";
-            DiscordBridge.Muted = t >= 17.6;
+            DiscordBridge.InCall = t < 13.2 || t >= 16.6;
+            DiscordBridge.CallName = t < 13.2 ? "General / Charlton Home" : "Matt";
+            DiscordBridge.Muted = t >= 19.6;
             double panelX = -1;   // fraction shown: 0 hidden .. 1 fully in
-            bool inVolume = false;
-            if (t >= 4.4 && t < 10.4) panelX = t < 4.7 ? ease((t - 4.4) / 0.3) : t > 10.1 ? 1 - ease((t - 10.1) / 0.3) : 1;
-            if (t >= 13.4 && t < 14.9) panelX = t < 13.7 ? ease((t - 13.4) / 0.3) : t > 14.6 ? 1 - ease((t - 14.6) / 0.3) : 1;
+            bool swapped = false;
+            if (t >= 4.4 && t < 13.1) panelX = t < 4.7 ? ease((t - 4.4) / 0.3) : t > 12.8 ? 1 - ease((t - 12.8) / 0.3) : 1;
+            if (t >= 15.6 && t < 16.9) panelX = t < 15.9 ? ease((t - 15.6) / 0.3) : t > 16.6 ? 1 - ease((t - 16.6) / 0.3) : 1;
             if (panelX >= 0)
             {
-                items.Clear(); parents.Clear(); title = "Party"; selected = 0; Rebuild();
-                if (t < 10.4)
+                items.Clear(); parents.Clear(); selected = 0;
+                tab = t < 6.6 || t >= 15.6 ? 0 : t < 9.6 ? 1 : t < 11.4 ? 2 : 3;
+                title = Tabs[tab];
+                if (tab == 1)
                 {
-                    int volumeRow = items.FindIndex(i => i.Text.StartsWith("Volume"));
-                    selected = Math.Min(volumeRow, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
-                    if (t >= 7.5 && t < 9.9)
-                    {
-                        inVolume = true;
-                        parents.Push(new Level { Title = "Party", Items = items, Selected = selected });
-                        title = "Volume"; items = volume; selected = 0;
-                        volume[0].Level = t < 8.0 ? 80 : Math.Max(45, 80 - 5 * (int)((t - 8.0) / 0.2));
-                    }
+                    swapped = true; items = audio;
+                    selected = t < 7.2 ? 0 : 2;   // move down to Game
+                    volume[0].Level = t < 7.8 ? 80 : Math.Max(45, 80 - 5 * (int)((t - 7.8) / 0.2));
                 }
-                else selected = 0;   // incoming: Answer
+                else
+                {
+                    Rebuild();
+                    if (tab == 0 && t < 6.6) selected = Math.Min(4, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
+                    else if (tab == 2) selected = Math.Min(3, (int)Math.Max(0, (t - 10.0) / 0.35));
+                    else if (tab == 3) selected = Math.Min(2, (int)Math.Max(0, (t - 11.8) / 0.35));
+                    else selected = 0;   // incoming: Answer
+                }
             }
-            hudIcon = t < 4.2 ? "people" : t < 17.5 ? "people" : "micoff";
-            hudTitle = t < 4.2 ? "Connected" : t < 17.5 ? "Connected" : "Microphone muted";
-            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 17.5 ? "Matt" : "";
-            double hudAlpha = Math.Max(window(t, 1.0, 4.2), Math.Max(window(t, 14.9, 17.4), window(t, 17.6, 20.6)));
-            double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 10.8, 13.6) : 0;
-
+            hudIcon = t < 19.4 ? "people" : "micoff";
+            hudTitle = t < 19.4 ? "Connected" : "Microphone muted";
+            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 19.4 ? "Matt" : "";
+            double hudAlpha = Math.Max(window(t, 1.0, 4.2), Math.Max(window(t, 16.9, 19.4), window(t, 19.6, 22.6)));
+            double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 13.4, 15.6) : 0;
             // --- Compose ---
             using (var frame = new Bitmap(W, H))
             using (var g = Graphics.FromImage(frame))
@@ -842,7 +857,7 @@ static class PartyPanel
                 }
                 frame.Save(System.IO.Path.Combine(folder, string.Format("f{0:D4}.png", n)), System.Drawing.Imaging.ImageFormat.Png);
             }
-            if (inVolume) { items = parents.Pop().Items; }
+            if (swapped) items = new List<Item>();
         }
         bg.Dispose();
     }

@@ -514,7 +514,9 @@ static class CouchKit
         if (args.Length > 2 && args[0] == "--demo")   // demo video frames: --demo <folder> <background image>
         {
             string note;
-            PartyPanel.Demo(Settings.Load(out note).Discord, args[1], args[2]);
+            var ds = Settings.Load(out note);
+            SmartHome.Start(ds.SmartHome, ds.Lighting);
+            PartyPanel.Demo(ds.Discord, args[1], args[2]);
             return;
         }        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
         {
