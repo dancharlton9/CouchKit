@@ -720,8 +720,7 @@ static class GuidePanel
                     using (var path = RoundedPath(pill, tabH / 2))
                     {
                         using (var fill = new SolidBrush(Card)) g.FillPath(fill, path);
-                        using (var edge = new LinearGradientBrush(pill, Aqua, Magenta, LinearGradientMode.Horizontal))
-                        using (var pen = new Pen(edge, unit / 10f)) g.DrawPath(pen, path);
+                        Outline(g, path, pill, unit / 10f);
                     }
                 using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(tx, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
                     DrawIcon(g, TabIcons[t], tx + (on ? unit * 0.75f : (tw - iconS) / 2), y + (tabH - iconS) / 2, iconS, ib);
@@ -751,8 +750,7 @@ static class GuidePanel
                 {
                     using (var fill = new SolidBrush(!home && DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
                     if (home ? playing : DiscordBridge.Incoming || DiscordBridge.InCall)
-                        using (var edge = new LinearGradientBrush(card, Aqua, Magenta, LinearGradientMode.Horizontal))
-                        using (var pen = new Pen(edge, unit / 8f)) g.DrawPath(pen, path);
+                        Outline(g, path, card, unit / 8f);
                 }
                 string icon = home ? "game" : DiscordBridge.Incoming ? "call" : DiscordBridge.InCall ? "people" : "chat";
                 string over = home ? (playing ? "NOW PLAYING" : "PLAYNITE") : DiscordBridge.Incoming ? "INCOMING CALL" : DiscordBridge.InCall ? "IN A CALL" : "DISCORD";
@@ -814,8 +812,7 @@ static class GuidePanel
                     using (var path = RoundedPath(r, unit * 0.5f))
                     {
                         using (var card = new SolidBrush(Card)) g.FillPath(card, path);
-                        using (var edge = new LinearGradientBrush(r, Aqua, Magenta, LinearGradientMode.Horizontal))
-                        using (var pen = new Pen(edge, unit / 10f)) g.DrawPath(pen, path);
+                        Outline(g, path, r, unit / 10f);
                     }
                 }
                 int textX = x + unit / 2;
@@ -955,8 +952,17 @@ static class GuidePanel
         float pw = Math.Max(2f, size.Height / 36f);
         var r = new RectangleF(pw / 2, pw / 2, size.Width - pw, size.Height - pw);
         using (var path = RoundedPath(r, radius - pw / 2))
-        using (var edge = new LinearGradientBrush(new RectangleF(0, 0, size.Width, size.Height), Aqua, Magenta, LinearGradientMode.Horizontal))
-        using (var pen = new Pen(edge, pw)) g.DrawPath(pen, path);
+        Outline(g, path, r, pw);
+    }
+
+    // Aqua-to-magenta outline of a shape. The gradient spans a little more than the stroke: the
+    // stroke reaches half its width outside the shape, and a gradient only as wide as the shape
+    // starts over there, leaving a block of the wrong colour at each end.
+    static void Outline(Graphics g, GraphicsPath path, RectangleF bounds, float width)
+    {
+        var span = RectangleF.Inflate(bounds, width * 1.5f, width * 1.5f);
+        using (var edge = new LinearGradientBrush(span, Aqua, Magenta, LinearGradientMode.Horizontal) { WrapMode = WrapMode.TileFlipX })
+        using (var pen = new Pen(edge, width)) g.DrawPath(pen, path);
     }
 
     static void PaintHud(Graphics g, Size size)
