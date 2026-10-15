@@ -248,7 +248,7 @@ static class GuidePanel
     static readonly string[] Tabs = { "Home", "Party", "Audio", "Lights", "System" };
     const int HomeTab = 0, PartyTab = 1, AudioTab = 2, LightsTab = 3, SystemTab = 4;
     static int tab;
-    static string battery = "";
+    static string battery = "", batteryPct = "";
 
     // LB/RB: previous/next tab (from any level; leaves sub-menus)
     public static void Tab(int direction)
@@ -514,7 +514,7 @@ static class GuidePanel
     static string lastBattery = "";
     static void Tick()
     {
-        try { battery = CouchKit.ControllerBattery(); } catch { battery = ""; }
+        try { battery = CouchKit.ControllerBattery(); batteryPct = CouchKit.ControllerBatteryPercent(battery); } catch { battery = batteryPct = ""; }
         if ((battery == "Low" || battery == "Empty") && battery != lastBattery) ShowHud("batterylow", "Controller battery " + battery.ToLowerInvariant(), "Time to charge it soon");
         lastBattery = battery;
         if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); }
@@ -587,6 +587,15 @@ static class GuidePanel
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
     }
 
+    // Where to put a line of text (drawn by Line) so its letters, rather than its line box, are centred
+    // on cy. Segoe UI's line box has room above for accents; the letters sit low in it. Lower-case
+    // words centre on their x-height, words with capitals or digits a little higher.
+    static float TextTop(Font font, string s, float cy)
+    {
+        bool tall = s.Any(c => char.IsUpper(c) || char.IsDigit(c));
+        return cy - font.Size * (tall ? 0.74f : 0.82f);
+    }
+
     // A hint like Xbox's: a coloured round button badge followed by its label. Returns the next x.
     static float Hint(Graphics g, string button, Color colour, string label, Font font, float x, float y, float size)
     {
@@ -599,10 +608,10 @@ static class GuidePanel
         }
         bool glyph = Glyphs.ContainsKey(button);
         using (var b = new SolidBrush(colour))
-            Centred(g, glyph ? Glyphs[button] : button, glyph ? iconFont : "Segoe UI Semibold", glyph ? FontStyle.Regular : FontStyle.Bold,
+            Centred(g, glyph ? Glyphs[button] : button, glyph ? iconFont : "Segoe UI Semibold", glyph ? FontStyle.Regular : FontStyle.Regular,
                     size * (glyph ? 0.5f : button.Length > 1 ? 0.36f : 0.5f), b, x + size / 2, y + size / 2);
         float lx = x + size * 1.25f;
-        Line(g, label, font, Dim, new RectangleF(lx, y + (size - font.Height) / 2, 1000, font.Height * 1.3f));
+        Line(g, label, font, Dim, new RectangleF(lx, TextTop(font, label, y + size / 2), 1000, font.Height * 1.3f));
         return lx + TextRenderer.MeasureText(label, font).Width + size * 0.9f;
     }
 
@@ -699,7 +708,7 @@ static class GuidePanel
             // Top bar: tabs as icons, the current one as a pill with its name; the clock on the right
             string clock = DateTime.Now.ToString("HH:mm");
             int clockW = TextRenderer.MeasureText(clock, bold).Width;
-            Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, y + (unit * 2.0f - bold.Height) / 2, clockW + 4, bold.Height * 1.3f));
+            Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, TextTop(bold, clock, y + unit * 1.0f), clockW + 4, bold.Height * 1.3f));
             float tx = x - unit * 0.5f, tabH = unit * 2.0f, iconS = unit * 1.05f;
             for (int t = 0; t < Tabs.Length; t++)
             {
@@ -716,7 +725,7 @@ static class GuidePanel
                     }
                 using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(tx, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
                     DrawIcon(g, TabIcons[t], tx + (on ? unit * 0.75f : (tw - iconS) / 2), y + (tabH - iconS) / 2, iconS, ib);
-                if (on) Line(g, Tabs[t], bold, Text, new RectangleF(tx + unit * 2.25f, y + (tabH - bold.Height) / 2, labelW + 4, bold.Height * 1.3f));
+                if (on) Line(g, Tabs[t], bold, Text, new RectangleF(tx + unit * 2.25f, TextTop(bold, Tabs[t], y + tabH / 2), labelW + 4, bold.Height * 1.3f));
                 tx += tw + unit * 0.15f;
             }
             y += (int)(tabH + unit * 1.0f);
@@ -837,8 +846,8 @@ static class GuidePanel
                     var pill = new RectangleF(textRight - bw, y + (rowH - bh) / 2f, bw, bh);
                     using (var path = RoundedPath(pill, bh / 2f))
                     using (var fill = new LinearGradientBrush(pill, Magenta, Color.FromArgb(170, 62, 152), LinearGradientMode.Horizontal)) g.FillPath(fill, path);
-                    var bs = TextRenderer.MeasureText(item.Badge, heading);
-                    Line(g, item.Badge, heading, Color.White, new RectangleF(pill.Left + (bw - bs.Width) / 2f, pill.Top + (bh - heading.Height) / 2f, bs.Width + 4, heading.Height * 1.3f));
+                    using (var white = new SolidBrush(Color.White))
+                        Centred(g, item.Badge, "Segoe UI Semibold", FontStyle.Regular, heading.Size * 1.05f, white, pill.Left + bw / 2f, pill.Top + bh / 2f);
                     textRight -= bw + unit / 2;
                 }
                 if (item.Level >= -1)
@@ -908,10 +917,10 @@ static class GuidePanel
             {
                 bool low = battery == "Low" || battery == "Empty";
                 string key = battery == "Wired" ? "wired" : low ? "batterylow" : "battery";
-                string label = battery == "Wired" ? "wired" : battery.ToLowerInvariant();
+                string label = battery == "Wired" ? "wired" : batteryPct;
                 int lw = TextRenderer.MeasureText(label, small).Width;
                 float bx = size.Width - x - lw;
-                Line(g, label, small, low ? Red : Dim, new RectangleF(bx, hy + (hs - small.Height) / 2, lw + 4, small.Height * 1.3f));
+                Line(g, label, small, low ? Red : Dim, new RectangleF(bx, TextTop(small, label, hy + hs / 2), lw + 4, small.Height * 1.3f));
                 using (var bb = new SolidBrush(low ? Red : Dim)) DrawIcon(g, key, bx - unit * 1.6f, hy + (hs - unit * 1.1f) / 2, unit * 1.1f, bb);
             }
         }
@@ -922,28 +931,31 @@ static class GuidePanel
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         int unit = size.Height / 5;
-        using (var accent = new LinearGradientBrush(new Point(0, 0), new Point(size.Width, 0), Aqua, Magenta))
-            g.FillRectangle(accent, 0, size.Height - unit / 3, size.Width, unit / 3);
+        GradientBorder(g, size, size.Height / 5);
         using (var big = new Font("Segoe UI Semibold", unit * 1.35f, GraphicsUnit.Pixel))
         using (var small = new Font("Segoe UI", unit * 0.8f, GraphicsUnit.Pixel))
         using (var text = new SolidBrush(Text))
         using (var dim = new SolidBrush(Dim))
         using (var iconBrush = new LinearGradientBrush(new Rectangle(0, 0, unit * 4, unit * 4), Aqua, Magenta, 45f))
         {
-            DrawIcon(g, "call", unit * 0.9f, (size.Height - unit / 3f - unit * 2.2f) / 2, unit * 2.2f, iconBrush);
-            float tx = unit * 4;
-            if (DiscordBridge.Incoming)
-            {
-                string who = DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call";
-                g.DrawString(who, big, text, tx, unit * 0.7f);
-                g.DrawString("Press the Xbox button, then A to answer", small, dim, tx, unit * 2.6f);
-            }
-            else
-            {
-                g.DrawString("Calling " + DiscordBridge.CallingTo + "…", big, text, tx, unit * 0.7f);
-                g.DrawString("Waiting for them to join  ·  Xbox ×2 for call options", small, dim, tx, unit * 2.6f);
-            }
+            DrawIcon(g, "call", unit * 0.9f, (size.Height - unit * 2.2f) / 2, unit * 2.2f, iconBrush);
+            float tx = unit * 4, tw = size.Width - tx - unit;
+            string first = DiscordBridge.Incoming ? (DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming Discord call")
+                                                  : "Calling " + DiscordBridge.CallingTo + "…";
+            string second = DiscordBridge.Incoming ? "Press the Xbox button, then A to answer" : "Waiting for them to join  ·  Xbox ×2 for call options";
+            Line(g, first, big, Text, new RectangleF(tx, TextTop(big, first, size.Height * 0.39f), tw, big.Height * 1.2f));
+            Line(g, second, small, Dim, new RectangleF(tx, TextTop(small, second, size.Height * 0.7f), tw, small.Height * 1.3f));
         }
+    }
+
+    // Aqua-to-magenta outline just inside a rounded window, like the selected tab
+    static void GradientBorder(Graphics g, Size size, float radius)
+    {
+        float pw = Math.Max(2f, size.Height / 36f);
+        var r = new RectangleF(pw / 2, pw / 2, size.Width - pw, size.Height - pw);
+        using (var path = RoundedPath(r, radius - pw / 2))
+        using (var edge = new LinearGradientBrush(new RectangleF(0, 0, size.Width, size.Height), Aqua, Magenta, LinearGradientMode.Horizontal))
+        using (var pen = new Pen(edge, pw)) g.DrawPath(pen, path);
     }
 
     static void PaintHud(Graphics g, Size size)
@@ -951,8 +963,7 @@ static class GuidePanel
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         int unit = size.Height / 4;
-        using (var accent = new LinearGradientBrush(new Point(0, 0), new Point(0, size.Height), Aqua, Magenta))
-            g.FillRectangle(accent, 0, 0, unit / 3, size.Height);
+        GradientBorder(g, size, size.Height / 4);
         using (var big = new Font("Segoe UI Semibold", unit * 1.05f, GraphicsUnit.Pixel))
         using (var small = new Font("Segoe UI", unit * 0.75f, GraphicsUnit.Pixel))
         using (var text = new SolidBrush(Text))
@@ -964,8 +975,8 @@ static class GuidePanel
             iconBrush.Dispose();
             float tx = unit * 3.4f, tw = size.Width - tx - unit * 0.6f;
             bool two = hudDetail.Length > 0;
-            Line(g, hudTitle, big, Text, new RectangleF(tx, two ? unit * 0.55f : unit * 1.25f, tw, big.Height * 1.2f));
-            if (two) Line(g, hudDetail, small, Dim, new RectangleF(tx, unit * 2.2f, tw, small.Height * 1.2f));
+            Line(g, hudTitle, big, Text, new RectangleF(tx, TextTop(big, hudTitle, two ? size.Height * 0.37f : size.Height * 0.5f), tw, big.Height * 1.2f));
+            if (two) Line(g, hudDetail, small, Dim, new RectangleF(tx, TextTop(small, hudDetail, size.Height * 0.69f), tw, small.Height * 1.3f));
         }
     }
 
@@ -991,7 +1002,7 @@ static class GuidePanel
             }
         };
         render("panel.png", 1305, 2160, PaintPanel);
-        battery = "Medium";
+        battery = "Medium"; batteryPct = "73%";
         for (int t = 1; t < Tabs.Length; t++)
         {
             tab = t; items.Clear(); parents.Clear(); title = Tabs[t]; selected = 1;
@@ -1102,7 +1113,7 @@ static class GuidePanel
             Heading("Volume"),
         };
         audio.AddRange(volume);
-        battery = "Full";
+        battery = "Full"; batteryPct = "92%";
 
         int frames = (int)(30.5 * Fps);
         for (int n = 0; n < frames; n++)

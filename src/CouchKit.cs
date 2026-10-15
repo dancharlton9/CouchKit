@@ -432,6 +432,31 @@ static class CouchKit
         return "";
     }
 
+    // Battery as a percentage for the Guide: "73%" from Windows.Gaming.Input's battery report when
+    // the controller gives one, otherwise "~60%" estimated from XInput's four levels. "" if there's
+    // no wireless controller.
+    internal static string ControllerBatteryPercent(string level)
+    {
+        if (level == "" || level == "Wired") return "";
+        try { int exact = GamingInputBattery(); if (exact >= 0) return exact + "%"; }
+        catch (Exception) { }   // Windows.Gaming.Input not available
+        switch (level) { case "Empty": return "~5%"; case "Low": return "~25%"; case "Medium": return "~60%"; default: return "~100%"; }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static int GamingInputBattery()
+    {
+        foreach (var pad in Windows.Gaming.Input.Gamepad.Gamepads)
+        {
+            if (!pad.IsWireless) continue;
+            var r = pad.TryGetBatteryReport();
+            if (r == null || !r.RemainingCapacityInMilliwattHours.HasValue || !r.FullChargeCapacityInMilliwattHours.HasValue) continue;
+            int full = r.FullChargeCapacityInMilliwattHours.Value;
+            if (full > 0) return Math.Max(0, Math.Min(100, r.RemainingCapacityInMilliwattHours.Value * 100 / full));
+        }
+        return -1;
+    }
+
     // Saves what's on the TV to Pictures\CouchKit
     internal static string Screenshot()
     {

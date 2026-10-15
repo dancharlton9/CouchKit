@@ -12,6 +12,8 @@ $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { throw ".NET Framework 4 compiler not found at $csc" }
 $version = (Get-Content VERSION -Raw).Trim()
 $wpf = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\WPF'
+$fx = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
+$winmd = Join-Path $env:WINDIR 'System32\WinMetadata'   # Windows.Gaming.Input, for the controller's battery
 
 New-Item -ItemType Directory -Force bin, obj | Out-Null
 Set-Content obj\Version.cs -Encoding UTF8 @"
@@ -22,7 +24,9 @@ Set-Content obj\Version.cs -Encoding UTF8 @"
 "@
 
 & $csc /nologo /target:winexe /platform:x64 /optimize /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Windows.Forms.dll `
-    /r:"$wpf\UIAutomationClient.dll" /r:"$wpf\UIAutomationTypes.dll" /r:"$wpf\WindowsBase.dll" /out:bin\CouchKit.exe (Get-ChildItem src\*.cs).FullName obj\Version.cs
+    /r:"$wpf\UIAutomationClient.dll" /r:"$wpf\UIAutomationTypes.dll" /r:"$wpf\WindowsBase.dll" `
+    /r:"$winmd\Windows.Gaming.winmd" /r:"$winmd\Windows.Foundation.winmd" /r:"$winmd\Windows.Devices.winmd" /r:"$winmd\Windows.System.winmd" `
+    /r:"$fx\System.Runtime.WindowsRuntime.dll" /r:"$fx\System.Runtime.dll" /out:bin\CouchKit.exe (Get-ChildItem src\*.cs).FullName obj\Version.cs
 if ($LASTEXITCODE) { throw 'CouchKit.exe build failed' }
 "Built bin\CouchKit.exe $version"
 
