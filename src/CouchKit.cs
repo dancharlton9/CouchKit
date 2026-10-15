@@ -465,6 +465,18 @@ static class CouchKit
         return "Closing the game";
     }
 
+    internal static void FocusGame()
+    {
+        IntPtr w = MainWindowOf(PlayniteGameProcesses());
+        if (w != IntPtr.Zero) BringToFront(w);
+    }
+
+    internal static void FocusPlaynite()
+    {
+        var p = Process.GetProcessesByName("Playnite.FullscreenApp").FirstOrDefault();
+        if (p != null && p.MainWindowHandle != IntPtr.Zero) BringToFront(p.MainWindowHandle);
+    }
+
     internal static void RestartPlaynite()
     {
         var p = Process.GetProcessesByName("Playnite.FullscreenApp").FirstOrDefault();

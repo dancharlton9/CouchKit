@@ -53,6 +53,7 @@ class Settings
             if (s.SmartHome == null) s.SmartHome = new SmartHomeSettings();
             if (s.Discord == null) s.Discord = new DiscordSettings();
             if (s.Discord.Favourites == null) s.Discord.Favourites = new DiscordFavourite[0];
+            if (s.Discord.QuickReplies == null || s.Discord.QuickReplies.Length == 0) s.Discord.QuickReplies = new DiscordSettings().QuickReplies;
             note = "settings from " + FilePath;
             return s;
         }
@@ -164,7 +165,9 @@ class DiscordSettings
     // (their name as it appears in Discord's direct messages list), or a voice channel:
     // {"Label":"Gaming","Server":"Charlton Home","Channel":"General"}.
     public DiscordFavourite[] Favourites { get; set; }
-    public DiscordSettings() { Enabled = true; Favourites = new DiscordFavourite[0]; }
+    // Quick replies offered on a chat's page in the Guide
+    public string[] QuickReplies { get; set; }
+    public DiscordSettings() { Enabled = true; Favourites = new DiscordFavourite[0]; QuickReplies = new[] { "On my way", "Give me 5 mins", "In a game – call me?", "Can't talk right now", "👍" }; }
 }
 
 class DiscordFavourite

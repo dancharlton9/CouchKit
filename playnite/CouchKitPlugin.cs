@@ -3,7 +3,10 @@
 //   current-game.txt      the game's install folder (CouchKit treats processes run from it as the game)
 //   current-game-art.txt  the full path of the game's background image, or its cover if it has none
 //   current-game-name.txt the game's name
-// Both are deleted when the game exits.
+// They are deleted when the game exits. For the Guide's Home tab it also keeps:
+//   recent-games.json     the most recently played games (name, playtime, cover...), refreshed as games come and go
+// and watches playnite-command.txt for requests from CouchKit ("start <game id>", "library"), which it
+// carries out through Playnite itself, so playtime tracking and game-start events work as usual.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -22,6 +25,9 @@ public class CouchKitPlugin : GenericPlugin
     static readonly string GamePath = Path.Combine(DataDir, "current-game.txt");
     static readonly string ArtPath = Path.Combine(DataDir, "current-game-art.txt");
     static readonly string NamePath = Path.Combine(DataDir, "current-game-name.txt");
+    static readonly string RecentPath = Path.Combine(DataDir, "recent-games.json");
+    static readonly string CommandPath = Path.Combine(DataDir, "playnite-command.txt");
+    FileSystemWatcher commands;
 
     static readonly Guid PluginId = Guid.Parse("6f0c6a51-8d0b-4c41-9a38-2b1f4f6d7c11");
     public override Guid Id { get { return PluginId; } }
@@ -36,6 +42,75 @@ public class CouchKitPlugin : GenericPlugin
         // Left over from a crash or a game still running from before Playnite restarted
         DeleteGameFiles();
         StartCouchKit();
+        WriteRecentGames();
+        WatchCommands();
+    }
+
+    public override void OnLibraryUpdated(OnLibraryUpdatedEventArgs args) { WriteRecentGames(); }
+
+    // The 12 most recently played games, for the Guide's Home tab
+    void WriteRecentGames()
+    {
+        try
+        {
+            Directory.CreateDirectory(DataDir);
+            var games = PlayniteApi.Database.Games.Where(g => g.LastActivity.HasValue && !g.Hidden)
+                .OrderByDescending(g => g.LastActivity.Value).Take(12)
+                .Select(g => new
+                {
+                    Id = g.Id.ToString(),
+                    Name = g.Name ?? "",
+                    Playtime = g.Playtime,
+                    LastActivity = g.LastActivity.Value.ToString("o"),
+                    Installed = g.IsInstalled,
+                    Platform = g.Platforms != null && g.Platforms.Count > 0 ? g.Platforms[0].Name : "",
+                    Cover = string.IsNullOrEmpty(g.CoverImage) ? "" : PlayniteApi.Database.GetFullFilePath(g.CoverImage) ?? "",
+                    Background = string.IsNullOrEmpty(g.BackgroundImage) ? "" : PlayniteApi.Database.GetFullFilePath(g.BackgroundImage) ?? "",
+                }).ToList();
+            File.WriteAllText(RecentPath, Playnite.SDK.Data.Serialization.ToJson(games));
+        }
+        catch (Exception ex) { logger.Error(ex, "CouchKit: could not write recent games"); }
+    }
+
+    // Requests from CouchKit: "start <game id>" or "library"
+    void WatchCommands()
+    {
+        try
+        {
+            Directory.CreateDirectory(DataDir);
+            DeleteFile(CommandPath);
+            commands = new FileSystemWatcher(DataDir, "playnite-command.txt") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
+            FileSystemEventHandler handler = (s, e) => System.Threading.ThreadPool.QueueUserWorkItem(_ => RunCommand());
+            commands.Created += handler;
+            commands.Changed += handler;
+            commands.EnableRaisingEvents = true;
+        }
+        catch (Exception ex) { logger.Error(ex, "CouchKit: could not watch for commands"); }
+    }
+
+    readonly object commandLock = new object();
+    void RunCommand()
+    {
+        lock (commandLock)
+        {
+            string text = null;
+            for (int i = 0; i < 5 && text == null; i++)
+            {
+                try { if (File.Exists(CommandPath)) { text = File.ReadAllText(CommandPath).Trim(); File.Delete(CommandPath); } else return; }
+                catch { System.Threading.Thread.Sleep(100); }
+            }
+            if (string.IsNullOrEmpty(text)) return;
+            logger.Info("CouchKit: command " + text);
+            PlayniteApi.MainView.UIDispatcher.Invoke(new Action(() =>
+            {
+                try
+                {
+                    Guid id;
+                    if (text.StartsWith("start ") && Guid.TryParse(text.Substring(6).Trim(), out id)) PlayniteApi.StartGame(id);
+                }
+                catch (Exception ex) { logger.Error(ex, "CouchKit: command failed: " + text); }
+            }));
+        }
     }
 
     public override void OnGameStarted(OnGameStartedEventArgs args)
@@ -52,11 +127,13 @@ public class CouchKitPlugin : GenericPlugin
             else DeleteFile(ArtPath);
         }
         catch (Exception ex) { logger.Error(ex, "CouchKit: could not record the running game"); }
+        WriteRecentGames();
     }
 
     public override void OnGameStopped(OnGameStoppedEventArgs args)
     {
         DeleteGameFiles();
+        WriteRecentGames();
     }
 
     public override void OnGameStartupCancelled(OnGameStartupCancelledEventArgs args)

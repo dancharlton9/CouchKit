@@ -235,10 +235,32 @@ static class DiscordBridge
     }
 
     // Recent chats from Discord's direct messages list: friends and group chats, newest first.
-    public class Chat { public string Name; public bool Group; public int Members; public string Status = ""; }
+    public class Chat { public string Name; public bool Group; public int Members; public string Status = "", Activity = ""; public bool InCall; }
+    public class Message { public string Author, Text; }
 
     // A friend's avatar is labelled "<username>, Online" (or Idle, Do Not Disturb, Offline, ...)
     static readonly Regex StatusLabel = new Regex(@", (?<status>Online|Idle|Do Not Disturb|Offline|Streaming|Invisible)$", RegexOptions.IgnoreCase);
+
+    // A friend's activity line in the DM list ("Playing Valorant", "Listening to Spotify"...)
+    static readonly Regex ActivityText = new Regex(@"^(Playing|Listening to|Watching|Streaming|Competing in|In a call)\b", RegexOptions.IgnoreCase);
+    static string ActivityNear(AutomationElement link, string name)
+    {
+        try
+        {
+            var item = TreeWalker.ControlViewWalker.GetParent(TreeWalker.ControlViewWalker.GetParent(link) ?? link);
+            if (item == null) return "";
+            foreach (AutomationElement e in item.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+            {
+                string n = e.Current.Name;
+                if (string.IsNullOrEmpty(n) || n == name) continue;
+                var m = Regex.Match(n, @"^(In a call) \(");
+                if (m.Success) return "in a call";
+                if (ActivityText.IsMatch(n) && n.Length < 80) return n;
+            }
+        }
+        catch { }
+        return "";
+    }
 
     static string StatusNear(AutomationElement link)
     {
@@ -259,7 +281,10 @@ static class DiscordBridge
         return "";
     }
 
-    static readonly Regex ChatLink = new Regex(@"^(unread, )?(?<name>.+?) \((?<kind>direct|group) message\)(, (?<members>\d+) Members)?(, (?<status>Online|Idle|Do Not Disturb|Offline|Streaming))?", RegexOptions.IgnoreCase);
+    // e.g. "unread, Matt (direct message), Ongoing Call, Online" or "Spod, Liam (group message), 3 Members"
+    static readonly Regex ChatLink = new Regex(@"^(unread, )?(?<name>.+?) \((?<kind>direct|group) message\)(?<rest>.*)$", RegexOptions.IgnoreCase);
+    static readonly Regex Members = new Regex(@", (?<n>\d+) Members", RegexOptions.IgnoreCase);
+    static readonly Regex StatusSuffix = new Regex(@", (?<status>Online|Idle|Do Not Disturb|Offline|Streaming)\b", RegexOptions.IgnoreCase);
 
     public static List<Chat> ListChats()
     {
@@ -272,12 +297,14 @@ static class DiscordBridge
         {
             var m = ChatLink.Match(e.Current.Name);
             if (!m.Success) continue;
-            int members; int.TryParse(m.Groups["members"].Value, out members);
+            string rest = m.Groups["rest"].Value;
+            int members; int.TryParse(Members.Match(rest).Groups["n"].Value, out members);
             string name = m.Groups["name"].Value;
             if (chats.Any(c => c.Name == name)) continue;
             bool group = m.Groups["kind"].Value.Equals("group", StringComparison.OrdinalIgnoreCase);
-            string status = m.Groups["status"].Value;
-            var chat = new Chat { Name = name, Group = group, Members = members, Status = group ? "" : status.Length > 0 ? status : StatusNear(e) };
+            string status = StatusSuffix.Match(rest).Groups["status"].Value;
+            var chat = new Chat { Name = name, Group = group, Members = members, Status = group ? "" : status.Length > 0 ? status : StatusNear(e),
+                                  InCall = rest.IndexOf("Ongoing Call", StringComparison.OrdinalIgnoreCase) >= 0, Activity = ActivityNear(e, name) };
             chats.Add(chat);
             if (!group) lock (Statuses) Statuses[name] = chat.Status;
         }
@@ -303,17 +330,36 @@ static class DiscordBridge
         return servers;
     }
 
-    public static List<string> ListVoiceChannels(string server)
+    public class Channel { public string Name; public List<string> People = new List<string>(); }
+
+    // A server's voice channels and who's in each (people are listed inside the channel's entry)
+    public static List<Channel> ListVoiceChannels(string server)
     {
         var main = MainWindow(true);
-        var channels = new List<string>();
+        var channels = new List<Channel>();
         if (main == null || !SelectServer(main, server)) return channels;
         var voice = new Regex(@"^(?<name>.+?) \(voice channel\)", RegexOptions.IgnoreCase);
+        var ignore = new Regex(@"^(Voice icon|Open Chat|Invite to Channel|Edit Channel|Voice|.*\(voice channel\).*|Muted|Deafened|Server Muted|Server Deafened|LIVE|Live|Video|Streaming)$", RegexOptions.IgnoreCase);
         WaitFor(main, ControlType.Button, voice, 3000);
         foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
         {
             var m = voice.Match(e.Current.Name);
-            if (m.Success && !channels.Contains(m.Groups["name"].Value)) channels.Add(m.Groups["name"].Value);
+            if (!m.Success || channels.Any(c => c.Name == m.Groups["name"].Value)) continue;
+            var ch = new Channel { Name = m.Groups["name"].Value };
+            try
+            {
+                var item = TreeWalker.ControlViewWalker.GetParent(e);
+                if (item != null)
+                    foreach (AutomationElement p in item.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+                    {
+                        string n = p.Current.Name;
+                        if (string.IsNullOrWhiteSpace(n) || ignore.IsMatch(n) || p.Current.ControlType == ControlType.Image) continue;
+                        if ((p.Current.ControlType == ControlType.Hyperlink || p.Current.ControlType == ControlType.Button || p.Current.ControlType == ControlType.Text || p.Current.ControlType == ControlType.ListItem) && !ch.People.Contains(n) && n.Length < 40)
+                            ch.People.Add(n);
+                    }
+            }
+            catch { }
+            channels.Add(ch);
         }
         return channels;
     }
@@ -324,6 +370,76 @@ static class DiscordBridge
             .Cast<AutomationElement>().FirstOrDefault(e => Regex.IsMatch(e.Current.Name, @"(^|, )" + Regex.Escape(server) + @"($|,)", RegexOptions.IgnoreCase));
         if (srv == null) return false;
         ((SelectionItemPattern)srv.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        return true;
+    }
+
+    static readonly Regex Timestamp = new Regex(@"^(\d{1,2}:\d{2}( [AP]M)?|\d{1,2}/\d{1,2}/\d{2,4},? \d{1,2}:\d{2}( [AP]M)?|(Today|Yesterday) at .+|(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), .+|\(edited\)|edited)$", RegexOptions.IgnoreCase);
+
+    // The last few messages in a DM or group chat (opening it marks it read, as in Discord itself)
+    public static List<Message> ReadMessages(string chat, int count)
+    {
+        var list = new List<Message>();
+        var main = MainWindow(true);
+        if (main == null || !OpenChat(main, chat)) return list;
+        WaitFor(main, ControlType.ListItem, new Regex("."), 1500);
+        var items = main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().Where(e => (e.Current.AutomationId ?? "").StartsWith("chat-messages-")).ToList();
+        string author = "";
+        foreach (var item in items.Skip(Math.Max(0, items.Count - count * 2)))
+        {
+            var parts = item.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>().ToList();
+            int authorAt = parts.FindIndex(p => p.Current.ControlType == ControlType.Hyperlink && p.GetSupportedPatterns().Contains(ExpandCollapsePattern.Pattern));
+            if (authorAt >= 0) author = parts[authorAt].Current.Name;
+            var text = parts.Skip(authorAt + 1).Where(p => p.Current.ControlType == ControlType.Text).Select(p => p.Current.Name.Trim())
+                .Where(t => t.Length > 0 && !Timestamp.IsMatch(t) && t != author).ToList();
+            if (text.Count == 0) continue;
+            list.Add(new Message { Author = author, Text = string.Join(" ", text) });
+        }
+        return list.Skip(Math.Max(0, list.Count - count)).ToList();
+    }
+
+    [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    // Sends a message: Discord briefly comes forward to type it (pasted, then Enter), then the
+    // screen is put back by Do(). Discord has no other way in for typing.
+    public static string SendMessage(string chat, string text)
+    {
+        var main = MainWindow(true);
+        if (main == null || !OpenChat(main, chat)) return "Discord: couldn't open the chat with " + chat;
+        var box = WaitFor(main, ControlType.Edit, new Regex("^Message "), 3000);
+        if (box == null) return "Discord: couldn't find the message box";
+        IntPtr hwnd = Process.GetProcessesByName("Discord").Select(p => p.MainWindowHandle).FirstOrDefault(h => h != IntPtr.Zero);
+        ShowWindow(hwnd, 9 /* SW_RESTORE */);
+        CouchKit.BringToFront(hwnd);
+        Thread.Sleep(250);
+        box.SetFocus();
+        Thread.Sleep(100);
+        string previous = null;
+        RunSta(() => { try { if (System.Windows.Forms.Clipboard.ContainsText()) previous = System.Windows.Forms.Clipboard.GetText(); System.Windows.Forms.Clipboard.SetText(text); } catch { } });
+        keybd_event(0x11, 0, 0, UIntPtr.Zero); keybd_event(0x56, 0, 0, UIntPtr.Zero);   // Ctrl+V
+        keybd_event(0x56, 0, 2, UIntPtr.Zero); keybd_event(0x11, 0, 2, UIntPtr.Zero);
+        Thread.Sleep(150);
+        keybd_event(0x0D, 0, 0, UIntPtr.Zero); keybd_event(0x0D, 0, 2, UIntPtr.Zero);    // Enter
+        Thread.Sleep(200);
+        RunSta(() => { try { if (previous != null) System.Windows.Forms.Clipboard.SetText(previous); else System.Windows.Forms.Clipboard.Clear(); } catch { } });
+        return "Discord: sent \"" + text + "\" to " + chat;
+    }
+
+    static void RunSta(Action a)
+    {
+        var t = new Thread(() => a());
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join(2000);
+    }
+
+    static bool OpenChat(AutomationElement main, string chat)
+    {
+        GoToDirectMessages(main);
+        var link = WaitFor(main, ControlType.Hyperlink, new Regex("^(unread, )?" + Regex.Escape(chat) + @" \((direct|group) message\)", RegexOptions.IgnoreCase), 3000);
+        if (link == null) return false;
+        ((InvokePattern)link.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        Thread.Sleep(600);
         return true;
     }
 

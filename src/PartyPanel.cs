@@ -25,7 +25,8 @@ static class PartyPanel
     {
         public string Text, Icon;
         public Func<string> Action;
-        public bool CloseAfter, Direct;
+        public bool CloseAfter, Direct, Quiet;
+        public PlayniteLink.Game Game;   // Home tab: the game this row starts   // Quiet: information row (e.g. a message)
         public Func<List<Item>> Submenu;
         public Color? Dot;
         public Func<int, int> Adjust;
@@ -61,6 +62,7 @@ static class PartyPanel
         { "power", "" }, { "game", "" }, { "server", "" }, { "star", "" },
         { "tv", "\uE7F4" }, { "bulb", "\uEA80" }, { "bulboff", "\uE708" }, { "camera", "\uE722" }, { "refresh", "\uE72C" },
         { "closegame", "\uE7FC" }, { "battery", "\uE83F" }, { "batterylow", "\uE850" }, { "wired", "\uE839" },
+        { "send", "\uE724" }, { "quote", "\uE8BD" }, { "home", "\uE80F" }, { "library", "\uE8F1" }, { "play", "\uE768" }, { "swap", "\uE8AB" },
     };
     static string iconFont = "Segoe MDL2 Assets";
 
@@ -103,10 +105,10 @@ static class PartyPanel
         message = "";
         selected = firstVisible = 0;
         parents.Clear();
-        if (DiscordBridge.Incoming) tab = 0;   // ringing: straight to Answer
+        if (DiscordBridge.Incoming) tab = PartyTab;   // ringing: straight to Answer
         title = Tabs[tab];
         items = new List<Item>();
-        if (tab == 2) WarmSceneNames();
+        if (tab == LightsTab) WarmSceneNames();
         IsOpen = true;
         OnUi(() =>
         {
@@ -223,7 +225,8 @@ static class PartyPanel
 
     // --- Content ---
 
-    static readonly string[] Tabs = { "Party", "Audio", "Lights", "System" };
+    static readonly string[] Tabs = { "Home", "Party", "Audio", "Lights", "System" };
+    const int HomeTab = 0, PartyTab = 1, AudioTab = 2, LightsTab = 3, SystemTab = 4;
     static int tab;
     static string battery = "";
 
@@ -234,7 +237,7 @@ static class PartyPanel
         {
             tab = (tab + direction + Tabs.Length) % Tabs.Length;
             parents.Clear(); title = Tabs[tab]; message = ""; selected = firstVisible = 0; items = new List<Item>();
-            if (tab == 2) WarmSceneNames();
+            if (tab == LightsTab) WarmSceneNames();
             Rebuild();
             panel.Invalidate();
         });
@@ -243,15 +246,16 @@ static class PartyPanel
     static void Rebuild()
     {
         var list = new List<Item>();
-        if (tab == 1) AudioItems(list);
-        else if (tab == 2) LightsItems(list);
-        else if (tab == 3) SystemItems(list);
+        if (tab == HomeTab) HomeItems(list);
+        else if (tab == AudioTab) AudioItems(list);
+        else if (tab == LightsTab) LightsItems(list);
+        else if (tab == SystemTab) SystemItems(list);
         else PartyItems(list);
         list.Add(new Item { Text = "Close", Icon = "close" });
         string current = selected < items.Count ? items[selected].Text : null;
         items = list;
         int keep = current == null ? -1 : items.FindIndex(i => i.Text == current);
-        selected = tab == 0 && DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : Math.Max(0, Math.Min(selected, items.Count - 1));
+        selected = tab == PartyTab && DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : Math.Max(0, Math.Min(selected, items.Count - 1));
     }
 
     // --- Audio tab: where the sound goes, and how loud ---
@@ -285,7 +289,7 @@ static class PartyPanel
         ThreadPool.QueueUserWorkItem(_ =>
         {
             foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
-            OnUi(() => { if (IsOpen && tab == 2 && parents.Count == 0) { Rebuild(); panel.Invalidate(); } });
+            OnUi(() => { if (IsOpen && tab == LightsTab && parents.Count == 0) { Rebuild(); panel.Invalidate(); } });
         });
     }
 
@@ -307,9 +311,12 @@ static class PartyPanel
                             Action = () => { Lighting.Off = !Lighting.Off; ShowMessage(Lighting.Off ? "PC lighting off" : "PC lighting on"); return ""; } });
     }
 
-    // --- System tab ---
-    static void SystemItems(List<Item> list)
+    // --- Home tab: the running game, recently played (start or swap), the library ---
+    static void HomeItems(List<Item> list)
     {
+        var current = PlayniteLink.NowPlaying;
+        if (current.Length > 0)
+            list.Add(new Item { Text = "Resume " + current, Icon = "play", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusGame(); }); return ""; } });
         list.Add(new Item { Text = "Screenshot", Icon = "camera", Direct = true, Action = () =>
         {
             Close();
@@ -321,7 +328,22 @@ static class PartyPanel
             });
             return "";
         } });
-        list.Add(new Item { Text = "Close game", Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
+        if (current.Length > 0) list.Add(new Item { Text = "Close game", Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
+        foreach (var gm in PlayniteLink.Recent().Where(r => r.Name != current).Take(8))
+        {
+            var game = gm;
+            string text = game.Name + "  ·  " + (string.IsNullOrEmpty(game.Platform) ? "" : game.Platform + "  ·  ") + PlayniteLink.Hours(game.Playtime);
+            if (current.Length > 0)
+                list.Add(new Item { Text = text + " ›", Icon = "swap", Game = game, Submenu = () => Confirm("Switch to " + game.Name, () => PlayniteLink.SwitchTo(game)) });
+            else
+                list.Add(new Item { Text = text, Icon = "play", Game = game, Action = () => PlayniteLink.Start(game), CloseAfter = true });
+        }
+        list.Add(new Item { Text = "Playnite library", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
+    }
+
+    // --- System tab ---
+    static void SystemItems(List<Item> list)
+    {
         list.Add(new Item { Text = "Turn screen off", Icon = "tv", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(400); CouchKit.ScreenOff(); }); return ""; } });
         list.Add(new Item { Text = "Restart Playnite ›", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
         list.Add(new Item { Text = "Restart PC ›", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
@@ -378,8 +400,27 @@ static class PartyPanel
             string extra = c.Group ? "  ·  group" + (c.Members > 0 ? " of " + c.Members : "") : c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "";
             int fresh = DiscordBridge.Unread(name);
             if (fresh > 0) extra += "  ·  " + fresh + " new";
-            return new Item { Text = name + extra, Icon = c.Group ? "people" : "call", Action = () => DiscordBridge.CallFriend(name), CloseAfter = true, Dot = StatusColour(c.Status) };
+            if (c.InCall) extra += "  ·  in a call";
+            else if (c.Activity.Length > 0) extra += "  ·  " + c.Activity;
+            var chat = c;
+            return new Item { Text = name + extra + " ›", Icon = c.Group ? "people" : "chat", Dot = StatusColour(c.Status), Submenu = () => ChatPage(chat) };
         }).ToList();
+    }
+
+    // A chat's page: its last few messages, call (or join its call), and quick replies
+    static List<Item> ChatPage(DiscordBridge.Chat chat)
+    {
+        var list = new List<Item>();
+        string name = chat.Name;
+        list.Add(new Item { Text = chat.InCall ? "Join the call" : "Call " + name, Icon = "call", Action = () => DiscordBridge.CallFriend(name), CloseAfter = true });
+        list.Add(new Item { Text = "Quick reply ›", Icon = "message", Submenu = () => S.QuickReplies.Select(r =>
+        {
+            string reply = r;
+            return new Item { Text = reply, Icon = "send", Action = () => DiscordBridge.SendMessage(name, reply), CloseAfter = false };
+        }).ToList() });
+        foreach (var m in DiscordBridge.ReadMessages(name, 6))
+            list.Add(new Item { Text = (m.Author.Length > 0 ? m.Author + ":  " : "") + m.Text, Icon = "quote", Quiet = true });
+        return list;
     }
 
     static List<Item> ServersMenu()
@@ -395,8 +436,9 @@ static class PartyPanel
     {
         return DiscordBridge.ListVoiceChannels(server).Select(ch =>
         {
-            string channel = ch;
-            return new Item { Text = channel, Icon = "channel", Action = () => DiscordBridge.JoinVoice(server, channel), CloseAfter = true };
+            string channel = ch.Name;
+            string who = ch.People.Count == 0 ? "" : "  ·  " + string.Join(", ", ch.People.Take(4)) + (ch.People.Count > 4 ? " +" + (ch.People.Count - 4) : "");
+            return new Item { Text = channel + who, Icon = ch.People.Count > 0 ? "people" : "channel", Action = () => DiscordBridge.JoinVoice(server, channel), CloseAfter = true };
         }).ToList();
     }
 
@@ -568,27 +610,34 @@ static class PartyPanel
             y += unit * 3;
 
             // Status card: incoming call, current call, or not in a call
-            if (parents.Count == 0 && tab == 0)
+            if (parents.Count == 0 && (tab == PartyTab || tab == HomeTab))
             {
+                bool home = tab == HomeTab, playing = PlayniteLink.Running;
+                var currentGame = home && playing ? PlayniteLink.Current : null;
                 var card = new RectangleF(x - unit / 2, y, w, unit * 3.2f);
                 using (var path = RoundedPath(card, unit * 0.6f))
                 {
-                    using (var fill = new SolidBrush(DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
-                    if (DiscordBridge.Incoming || DiscordBridge.InCall)
+                    using (var fill = new SolidBrush(!home && DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
+                    if (home ? playing : DiscordBridge.Incoming || DiscordBridge.InCall)
                         using (var edge = new LinearGradientBrush(card, Aqua, Magenta, LinearGradientMode.Horizontal))
                         using (var pen = new Pen(edge, unit / 8f)) g.DrawPath(pen, path);
                 }
-                string icon = DiscordBridge.Incoming ? "call" : DiscordBridge.InCall ? "people" : "chat";
+                string icon = home ? "game" : DiscordBridge.Incoming ? "call" : DiscordBridge.InCall ? "people" : "chat";
                 string line1 = DiscordBridge.Incoming ? (DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming call")
                              : !DiscordBridge.Running ? "Discord isn't running"
                              : DiscordBridge.InCall ? "In a call" + (DiscordBridge.CallName.Length > 0 ? ": " + DiscordBridge.CallName : "")
                              : "Not in a call";
                 string line2 = DiscordBridge.InCall ? (DiscordBridge.Muted ? "Microphone muted" : "Microphone live") + (DiscordBridge.Deafened ? "  ·  deafened" : "")
                              : DiscordBridge.Incoming ? "Press A to answer" : "Pick a friend or channel below";
+                if (home)
+                {
+                    line1 = playing ? "Now playing: " + PlayniteLink.NowPlaying : "Nothing running";
+                    line2 = currentGame != null ? (string.IsNullOrEmpty(currentGame.Platform) ? "" : currentGame.Platform + "  ·  ") + PlayniteLink.Hours(currentGame.Playtime) : playing ? "" : "Pick something to play below";
+                }
                 using (var iconBrush = new LinearGradientBrush(new RectangleF(card.Left, card.Top, unit * 3, unit * 3), Aqua, Magenta, 45f))
                     DrawIcon(g, icon, card.Left + unit * 0.6f, card.Top + unit * 0.7f, unit * 1.6f, iconBrush);
                 Line(g, line1, bold, Text, new RectangleF(card.Left + unit * 3, card.Top + unit * 0.45f, card.Width - unit * 3.5f, bold.Height * 1.2f));
-                Line(g, line2, small, DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(card.Left + unit * 3, card.Top + unit * 1.8f, card.Width - unit * 3.5f, small.Height * 1.2f));
+                Line(g, line2, small, !home && DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(card.Left + unit * 3, card.Top + unit * 1.8f, card.Width - unit * 3.5f, small.Height * 1.2f));
                 y += (int)(unit * 4);
             }
 
@@ -740,7 +789,7 @@ static class PartyPanel
         for (int t = 1; t < Tabs.Length; t++)
         {
             tab = t; items.Clear(); parents.Clear(); title = Tabs[t]; selected = 1;
-            if (t == 2) foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
+            if (t == LightsTab) foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
             Rebuild();
             render("panel-" + Tabs[t].ToLowerInvariant() + ".png", 1305, 2160, PaintPanel);
         }
@@ -820,9 +869,9 @@ static class PartyPanel
             if (panelX >= 0)
             {
                 items.Clear(); parents.Clear(); selected = 0;
-                tab = t < 6.6 || t >= 15.6 ? 0 : t < 9.6 ? 1 : t < 11.4 ? 2 : 3;
+                tab = t < 6.6 || t >= 15.6 ? PartyTab : t < 9.6 ? AudioTab : t < 11.4 ? LightsTab : SystemTab;
                 title = Tabs[tab];
-                if (tab == 1)
+                if (tab == AudioTab)
                 {
                     swapped = true; items = audio;
                     selected = t < 7.2 ? 0 : 2;   // move down to Game
@@ -831,9 +880,9 @@ static class PartyPanel
                 else
                 {
                     Rebuild();
-                    if (tab == 0 && t < 6.6) selected = Math.Min(4, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
-                    else if (tab == 2) selected = Math.Min(3, (int)Math.Max(0, (t - 10.0) / 0.35));
-                    else if (tab == 3) selected = Math.Min(2, (int)Math.Max(0, (t - 11.8) / 0.35));
+                    if (tab == PartyTab && t < 6.6) selected = Math.Min(4, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
+                    else if (tab == LightsTab) selected = Math.Min(3, (int)Math.Max(0, (t - 10.0) / 0.35));
+                    else if (tab == SystemTab) selected = Math.Min(2, (int)Math.Max(0, (t - 11.8) / 0.35));
                     else selected = 0;   // incoming: Answer
                 }
             }
