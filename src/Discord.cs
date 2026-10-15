@@ -22,6 +22,14 @@ static class DiscordBridge
     public static volatile string IncomingFrom = "";
     public static volatile string CallingTo = "";          // outgoing call just started (for the "Calling…" banner)
     public static DateTime CallingSince = DateTime.MinValue;
+    public static volatile string CallName = "";           // the call or voice channel you're connected to
+    // Things worth a corner HUD message: (icon, title, detail). Set by the Party panel.
+    public static Action<string, string, string> Notify = (i, t, d) => { };
+    // Last known status of people in your DM list (filled whenever the chat list is read)
+    public static readonly Dictionary<string, string> Statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, int> unread = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    static readonly Regex UnreadItem = new Regex(@"^(?<name>.+?) , (?<n>\d+) unread messages?$", RegexOptions.IgnoreCase);
+    static bool callLayoutRecorded, unreadPrimed;
     static readonly BlockingCollection<Action> work = new BlockingCollection<Action>();
     static DiscordSettings S = new DiscordSettings();
 
@@ -65,7 +73,7 @@ static class DiscordBridge
 
     static void Run()
     {
-        bool wasIncoming = false;
+        bool wasIncoming = false, first = true, wasInCall = false, wasMuted = false, wasDeafened = false;
         while (true)
         {
             Action job;
@@ -74,10 +82,85 @@ static class DiscordBridge
             {
                 Refresh();
                 if (Incoming && !wasIncoming) CouchKit.Log("Discord: incoming call" + (IncomingFrom.Length > 0 ? " from " + IncomingFrom : ""));
-                wasIncoming = Incoming;
+                // Corner HUD messages for changes (not on the very first look)
+                if (!first && Running)
+                {
+                    if (InCall && !wasInCall) Notify("call", "Connected", CallName);
+                    if (!InCall && wasInCall) Notify("hangup", "Call ended", "");
+                    if (Muted != wasMuted) Notify(Muted ? "micoff" : "mic", Muted ? "Microphone muted" : "Microphone live", "");
+                    if (Deafened != wasDeafened) Notify(Deafened ? "deafened" : "headset", Deafened ? "Deafened" : "Sound back on", "");
+                }
+                if (InCall && !callLayoutRecorded) { callLayoutRecorded = true; RecordCallLayout(); }
+                wasIncoming = Incoming; wasInCall = InCall; wasMuted = Muted; wasDeafened = Deafened; first = false;
             }
             catch { }
         }
+    }
+
+    // New direct messages show in Discord's server bar as "<name> , N unread messages"
+    static void CheckUnread(AutomationElement main, bool announce)
+    {
+        var now = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem)))
+        {
+            var m = UnreadItem.Match(e.Current.Name);
+            if (m.Success) now[m.Groups["name"].Value.Trim()] = int.Parse(m.Groups["n"].Value);
+        }
+        foreach (var kv in now)
+        {
+            int before;
+            unread.TryGetValue(kv.Key, out before);
+            if (announce && kv.Value > before) Notify("message", kv.Key, kv.Value == 1 ? "1 new message" : kv.Value + " new messages");
+        }
+        unread.Clear();
+        foreach (var kv in now) unread[kv.Key] = kv.Value;
+    }
+
+    // Once per run, when first in a call: write which controls Discord shows during a call
+    // (types and names only; no message text), so "who's in the call" can be matched to it.
+    static void RecordCallLayout()
+    {
+        try
+        {
+            var main = Windows().FirstOrDefault();
+            if (main == null) return;
+            var lines = new List<string> { "Discord call layout " + DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
+            var types = new[] { ControlType.Button, ControlType.Image, ControlType.Hyperlink, ControlType.TreeItem, ControlType.ListItem, ControlType.Group };
+            foreach (AutomationElement e in main.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+            {
+                var c = e.Current;
+                if (!types.Contains(c.ControlType) || string.IsNullOrWhiteSpace(c.Name)) continue;
+                if ((c.AutomationId ?? "").StartsWith("chat-messages")) continue;   // message contents stay private
+                if (c.ControlType == ControlType.ListItem && c.Name.Length > 60) continue;
+                lines.Add(c.ControlType.ProgrammaticName.Replace("ControlType.", "") + " \"" + c.Name + "\" id=" + c.AutomationId);
+            }
+            File.WriteAllLines(Path.Combine(Settings.DataDir, "discord-call-layout.txt"), lines);
+            CouchKit.Log("Discord: recorded the call layout for who's-in-the-call support");
+        }
+        catch (Exception ex) { CouchKit.Log("Discord: call layout not recorded: " + ex.Message); }
+    }
+
+    // The call or channel name from Discord's "Voice Connected" panel
+    static string FindCallName(AutomationElement main)
+    {
+        try
+        {
+            var vc = main.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Voice Connected"));
+            if (vc == null) return "";
+            var parent = TreeWalker.ControlViewWalker.GetParent(vc);
+            for (int i = 0; i < 3 && parent != null; i++)
+            {
+                foreach (AutomationElement e in parent.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+                {
+                    string n = e.Current.Name;
+                    if (string.IsNullOrWhiteSpace(n) || n == "Voice Connected" || LeaveNames.IsMatch(n) || e.Current.ControlType == ControlType.Button && !n.Contains("/")) continue;
+                    if (n.Length > 2 && n.Length < 80) return n;
+                }
+                parent = TreeWalker.ControlViewWalker.GetParent(parent);
+            }
+        }
+        catch { }
+        return "";
     }
 
     // --- State ---
@@ -88,7 +171,12 @@ static class DiscordBridge
         Running = windows.Count > 0;
         if (!Running) { InCall = Muted = Deafened = Incoming = false; return; }
         var main = windows[0];
-        InCall = Find(main, ControlType.Button, LeaveNames) != null;
+        bool inCall = Find(main, ControlType.Button, LeaveNames) != null;
+        if (inCall && (!InCall || CallName.Length == 0)) CallName = FindCallName(main);
+        if (!inCall) CallName = "";
+        InCall = inCall;
+        CheckUnread(main, Running && unreadPrimed);
+        unreadPrimed = true;
         Muted = IsOn(Find(main, ControlType.Button, "Mute"));
         Deafened = IsOn(Find(main, ControlType.Button, "Deafen"));
         // A real ring offers Decline/Ignore as well. "Join Call" on its own is just a call still going
@@ -184,7 +272,9 @@ static class DiscordBridge
             if (chats.Any(c => c.Name == name)) continue;
             bool group = m.Groups["kind"].Value.Equals("group", StringComparison.OrdinalIgnoreCase);
             string status = m.Groups["status"].Value;
-            chats.Add(new Chat { Name = name, Group = group, Members = members, Status = group ? "" : status.Length > 0 ? status : StatusNear(e) });
+            var chat = new Chat { Name = name, Group = group, Members = members, Status = group ? "" : status.Length > 0 ? status : StatusNear(e) };
+            chats.Add(chat);
+            if (!group) lock (Statuses) Statuses[name] = chat.Status;
         }
         // People who are around first (keeping Discord's most-recent order within each group)
         Func<Chat, int> rank = c => c.Group ? 1 : c.Status == "Online" || c.Status == "Streaming" ? 0 : c.Status == "Idle" || c.Status == "Do Not Disturb" ? 1 : 2;
@@ -276,6 +366,9 @@ static class DiscordBridge
     }
 
     public static string Answer() { return PressInAnyWindow(AcceptNames, "answered the call", "no incoming call"); }
+
+    // Starts Discord (minimised) if it isn't running or is only in the tray
+    public static string StartDiscord() { return MainWindow(true) != null ? "Discord: ready" : "Discord: couldn't start it"; }
     public static string Decline() { return PressInAnyWindow(DeclineNames, "declined the call", "no incoming call"); }
 
     static string PressInAnyWindow(Regex names, string ok, string none)

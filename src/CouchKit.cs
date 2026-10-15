@@ -405,7 +405,12 @@ static class CouchKit
 
     static void Main(string[] args)
     {
-        if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
+        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
+        {
+            string note;
+            PartyPanel.Preview(Settings.Load(out note).Discord, args[1]);
+            return;
+        }        if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
         {
             File.WriteAllLines(Path.Combine(Settings.DataDir, "palette-test.txt"),
                 args.Skip(1).Select(a => Lighting.Describe(a) + "  " + Path.GetFileName(a)));
@@ -478,6 +483,7 @@ static class CouchKit
                         try
                         {
                             if (PartyPanel.IsOpen) PartyPanel.Close();
+                            else if (DiscordBridge.Incoming && S.Controller.DiscordButtons) PartyPanel.Open();   // ringing: tap, then A answers
                             else if (S.Controller.GuideButton) ToggleGameAndPlaynite();
                         }
                         catch (Exception ex) { Log("Xbox button action failed: " + ex.Message); }
