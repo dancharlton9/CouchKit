@@ -22,6 +22,7 @@ static class Lighting
 
     public static readonly string ArtPath = Path.Combine(Settings.DataDir, "current-game-art.txt");
     public static Action<string> Log = _ => { };
+    public static volatile bool Off;   // PC lighting switched off from the Guide (LEDs held black)
 
     public static void Start(LightingSettings settings)
     {
@@ -112,7 +113,7 @@ static class Lighting
                     int n = devices[d][z];
                     double zonePhase = phase + z * L.ZoneOffset + 1;
                     for (int i = 0; i < n; i++, o += 4)
-                        wheel[(int)(((double)i / n * L.Span + zonePhase) % 1 * (WheelSize - 1))].CopyTo(buf, o);
+                        if (!Off) wheel[(int)(((double)i / n * L.Span + zonePhase) % 1 * (WheelSize - 1))].CopyTo(buf, o);   // Off: left black
                 }
                 Send(ns, d, 1050, buf);   // UpdateLEDs
             }

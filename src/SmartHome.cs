@@ -30,7 +30,7 @@ static class SmartHome
     {
         S = settings;
         L = lighting;
-        if (string.IsNullOrEmpty(S.WebhookUrl) && string.IsNullOrEmpty(S.NanoleafHost)) return;
+        if (string.IsNullOrEmpty(S.WebhookUrl) && string.IsNullOrEmpty(S.NanoleafHost)) return;   // (Home Assistant calls still work)
         new Thread(Run) { IsBackground = true, Name = "SmartHome" }.Start();
     }
 
@@ -152,6 +152,71 @@ static class SmartHome
         var req = (HttpWebRequest)WebRequest.Create(url);
         req.Method = method;
         req.Timeout = 5000;
+        if (json != null)
+        {
+            byte[] data = Encoding.UTF8.GetBytes(json);
+            req.ContentType = "application/json";
+            req.ContentLength = data.Length;
+            using (var s = req.GetRequestStream()) s.Write(data, 0, data.Length);
+        }
+        using (var resp = (HttpWebResponse)req.GetResponse())
+        using (var r = new StreamReader(resp.GetResponseStream()))
+            return r.ReadToEnd();
+    }
+
+    // --- Home Assistant (the Guide's Lights tab) ---
+
+    public static bool HasHomeAssistant { get { return !string.IsNullOrEmpty(S.HomeAssistantUrl) && !string.IsNullOrEmpty(S.HomeAssistantToken); } }
+    public static string[] Scenes { get { return S.LightScenes ?? new string[0]; } }
+    static readonly Dictionary<string, string> friendly = new Dictionary<string, string>();
+
+    // An entity's friendly name ("Office Gaming"), looked up once
+    public static string NameOf(string entity)
+    {
+        lock (friendly) { string n; if (friendly.TryGetValue(entity, out n)) return n; }
+        string name = entity.Substring(entity.IndexOf('.') + 1).Replace('_', ' ');
+        try
+        {
+            var state = Json.Deserialize<Dictionary<string, object>>(HomeAssistant("GET", "/api/states/" + entity, null));
+            var attrs = (Dictionary<string, object>)state["attributes"];
+            object fn;
+            if (attrs.TryGetValue("friendly_name", out fn) && fn != null) name = fn.ToString();
+        }
+        catch { }
+        lock (friendly) friendly[entity] = name;
+        return name;
+    }
+
+    public static string Activate(string entity)
+    {
+        string domain = entity.Substring(0, entity.IndexOf('.'));
+        string service = domain == "scene" || domain == "script" ? "turn_on" : "toggle";
+        HomeAssistant("POST", "/api/services/" + domain + "/" + service, Json.Serialize(new Dictionary<string, object> { { "entity_id", entity } }));
+        return NameOf(entity) + " on";
+    }
+
+    public static bool RoomLightsOn()
+    {
+        foreach (var e in S.RoomLights ?? new string[0])
+        {
+            try { if ((string)Json.Deserialize<Dictionary<string, object>>(HomeAssistant("GET", "/api/states/" + e, null))["state"] == "on") return true; } catch { }
+        }
+        return false;
+    }
+
+    public static string SetRoomLights(bool on)
+    {
+        if (S.RoomLights == null || S.RoomLights.Length == 0) return "No room lights set";
+        HomeAssistant("POST", "/api/services/light/" + (on ? "turn_on" : "turn_off"), Json.Serialize(new Dictionary<string, object> { { "entity_id", S.RoomLights } }));
+        return on ? "Room lights on" : "Room lights off";
+    }
+
+    static string HomeAssistant(string method, string path, string json)
+    {
+        var req = (HttpWebRequest)WebRequest.Create(S.HomeAssistantUrl.TrimEnd('/') + path);
+        req.Method = method;
+        req.Timeout = 5000;
+        req.Headers["Authorization"] = "Bearer " + S.HomeAssistantToken;
         if (json != null)
         {
             byte[] data = Encoding.UTF8.GetBytes(json);

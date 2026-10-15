@@ -14,7 +14,7 @@ using System.Threading;
 
 static class PadExtras
 {
-    const ushort Up = 0x0001, Down = 0x0002, Left = 0x0004, Right = 0x0008, A = 0x1000, B = 0x2000;
+    const ushort Up = 0x0001, Down = 0x0002, Left = 0x0004, Right = 0x0008, LB = 0x0100, RB = 0x0200, A = 0x1000, B = 0x2000;
     static readonly ushort[] last = new ushort[4];
     static bool mouseMode;
     static double subX, subY;
@@ -50,6 +50,8 @@ static class PadExtras
             if (pressed(Down)) PartyPanel.Move(1);
             if (pressed(Left)) PartyPanel.Adjust(-1);
             if (pressed(Right)) PartyPanel.Adjust(1);
+            if (pressed(LB)) PartyPanel.Tab(-1);
+            if (pressed(RB)) PartyPanel.Tab(1);
             if (pressed(A)) PartyPanel.Select();
             if (pressed(B)) PartyPanel.GoBack();
             return;

@@ -147,7 +147,14 @@ class SmartHomeSettings
     public string NanoleafHost { get; set; }
     public string NanoleafToken { get; set; }
     public int NanoleafTransitionTime { get; set; }   // Flow speed, in tenths of a second per step
-    public SmartHomeSettings() { WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; }
+    // Home Assistant, for the Guide's Lights tab: address and a long-lived access token. Empty = no Lights tab.
+    public string HomeAssistantUrl { get; set; }
+    public string HomeAssistantToken { get; set; }
+    // Scenes or scripts listed in the Lights tab (entity ids, e.g. "scene.office_gaming", "script.office_calls")
+    public string[] LightScenes { get; set; }
+    // Lights switched by "Room lights on/off" (entity ids, e.g. "light.office_main")
+    public string[] RoomLights { get; set; }
+    public SmartHomeSettings() { WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; HomeAssistantUrl = ""; HomeAssistantToken = ""; LightScenes = new string[0]; RoomLights = new string[0]; }
 }
 
 class DiscordSettings

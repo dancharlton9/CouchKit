@@ -43,7 +43,11 @@
     "WebhookUrl": "",
     "NanoleafHost": "",
     "NanoleafToken": "",
-    "NanoleafTransitionTime": 24
+    "NanoleafTransitionTime": 24,
+    "HomeAssistantUrl": "",
+    "HomeAssistantToken": "",
+    "LightScenes": [],
+    "RoomLights": []
   },
   "Discord": {
     "Enabled": true,

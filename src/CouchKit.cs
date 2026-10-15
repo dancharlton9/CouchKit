@@ -25,6 +25,7 @@
 // Every feature can be switched off or tuned in %APPDATA%\CouchKit\couchkit.json (Settings.cs).
 // The Playnite add-on (playnite\) starts CouchKit with Playnite and reports the running game.
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -376,6 +377,111 @@ static class CouchKit
         return result.HasValue ? (int)Math.Round(result.Value * 100) : -1;
     }
 
+    // --- Guide helpers (Audio and System tabs) ---
+
+    // Sound outputs that are plugged in, with the current default marked: (name, id, isDefault)
+    internal static List<Tuple<string, string, bool>> OutputDevices()
+    {
+        var list = new List<Tuple<string, string, bool>>();
+        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+        IMMDeviceWithProps def;
+        string defId = "";
+        try { enumerator.GetDefaultAudioEndpoint(0, 1, out def); def.GetId(out defId); } catch { }
+        IMMDeviceCollection devices;
+        enumerator.EnumAudioEndpoints(0 /* render */, 1 /* active */, out devices);
+        uint count;
+        devices.GetCount(out count);
+        for (uint i = 0; i < count; i++)
+        {
+            IMMDevice device;
+            devices.Item(i, out device);
+            var props = (IMMDeviceWithProps)device;
+            string id;
+            props.GetId(out id);
+            string name = DeviceName(props);
+            if (name.IndexOf("Steam Streaming", StringComparison.OrdinalIgnoreCase) >= 0) continue;   // Steam's virtual speakers
+            list.Add(Tuple.Create(name, id, id == defId));
+        }
+        return list;
+    }
+
+    internal static string SetOutput(string id, string name)
+    {
+        var policy = (IPolicyConfig)new PolicyConfigClient();
+        for (int role = 0; role < 3; role++) policy.SetDefaultEndpoint(id, role);
+        Log("Audio output set to " + name + " from the Guide");
+        return "Sound now on " + name;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct XBattery { public byte Type, Level; }
+    [DllImport("xinput1_4.dll")] static extern int XInputGetBatteryInformation(int index, byte devType, out XBattery info);
+
+    // The first connected controller's battery: "Wired", "Full", "Medium", "Low", "Empty", or "" if none
+    internal static string ControllerBattery()
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            XState s;
+            if (XInputGetState(i, out s) != 0) continue;
+            XBattery b;
+            if (XInputGetBatteryInformation(i, 0 /* gamepad */, out b) != 0) return "";
+            if (b.Type == 1 /* wired */) return "Wired";
+            if (b.Type == 0 || b.Type == 0xFF) return "";
+            switch (b.Level) { case 0: return "Empty"; case 1: return "Low"; case 2: return "Medium"; default: return "Full"; }
+        }
+        return "";
+    }
+
+    // Saves what's on the TV to Pictures\CouchKit
+    internal static string Screenshot()
+    {
+        var tv = TvBounds();
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "CouchKit");
+        Directory.CreateDirectory(dir);
+        string name = "Screenshot " + DateTime.Now.ToString("yyyy-MM-dd HHmmss") + ".png";
+        using (var bmp = new System.Drawing.Bitmap(tv.Width, tv.Height))
+        {
+            using (var g = System.Drawing.Graphics.FromImage(bmp)) g.CopyFromScreen(tv.Location, System.Drawing.Point.Empty, tv.Size);
+            bmp.Save(Path.Combine(dir, name), System.Drawing.Imaging.ImageFormat.Png);
+        }
+        Log("Screenshot saved: " + name);
+        return name;
+    }
+
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+
+    // Turns the screen signal off (the TV goes to standby on most sets); any input brings it back
+    internal static void ScreenOff()
+    {
+        Log("Screen off from the Guide");
+        SendMessage(new IntPtr(0xFFFF) /* HWND_BROADCAST */, 0x0112 /* WM_SYSCOMMAND */, new IntPtr(0xF170) /* SC_MONITORPOWER */, new IntPtr(2));
+    }
+
+    internal static string CloseRunningGame()
+    {
+        uint[] game = PlayniteGameProcesses();
+        if (game.Length == 0) return "No game is running";
+        CloseGame();
+        return "Closing the game";
+    }
+
+    internal static void RestartPlaynite()
+    {
+        var p = Process.GetProcessesByName("Playnite.FullscreenApp").FirstOrDefault();
+        if (p == null) return;
+        string exe = ImagePath((uint)p.Id);
+        Log("Restarting Playnite from the Guide");
+        p.CloseMainWindow();
+        if (!p.WaitForExit(20000)) p.Kill();
+        if (exe != null) Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = Path.GetDirectoryName(exe) });
+    }
+
+    internal static void PowerAction(bool restart)
+    {
+        Log((restart ? "Restart" : "Shut down") + " from the Guide");
+        Process.Start(new ProcessStartInfo("shutdown.exe", (restart ? "/r" : "/s") + " /t 0") { CreateNoWindow = true, UseShellExecute = false });
+    }
+
     // The TV's screen area (the first physical screen), for windows CouchKit shows itself
     internal static System.Drawing.Rectangle TvBounds()
     {
@@ -413,7 +519,9 @@ static class CouchKit
         }        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
         {
             string note;
-            PartyPanel.Preview(Settings.Load(out note).Discord, args[1]);
+            var ps = Settings.Load(out note);
+            SmartHome.Start(ps.SmartHome, ps.Lighting);
+            PartyPanel.Preview(ps.Discord, args[1]);
             return;
         }        if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
         {

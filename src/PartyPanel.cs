@@ -59,6 +59,8 @@ static class PartyPanel
         { "volume", "" }, { "mic", "" }, { "micoff", "" }, { "headset", "" }, { "deafened", "" },
         { "mouse", "" }, { "close", "" }, { "message", "" }, { "accept", "" }, { "decline", "" },
         { "power", "" }, { "game", "" }, { "server", "" }, { "star", "" },
+        { "tv", "\uE7F4" }, { "bulb", "\uEA80" }, { "bulboff", "\uE708" }, { "camera", "\uE722" }, { "refresh", "\uE72C" },
+        { "closegame", "\uE7FC" }, { "battery", "\uE83F" }, { "batterylow", "\uE850" }, { "wired", "\uE839" },
     };
     static string iconFont = "Segoe MDL2 Assets";
 
@@ -101,7 +103,10 @@ static class PartyPanel
         message = "";
         selected = firstVisible = 0;
         parents.Clear();
-        title = "Party";
+        if (DiscordBridge.Incoming) tab = 0;   // ringing: straight to Answer
+        title = Tabs[tab];
+        items = new List<Item>();
+        if (tab == 2) WarmSceneNames();
         IsOpen = true;
         OnUi(() =>
         {
@@ -218,9 +223,125 @@ static class PartyPanel
 
     // --- Content ---
 
+    static readonly string[] Tabs = { "Party", "Audio", "Lights", "System" };
+    static int tab;
+    static string battery = "";
+
+    // LB/RB: previous/next tab (from any level; leaves sub-menus)
+    public static void Tab(int direction)
+    {
+        OnUi(() =>
+        {
+            tab = (tab + direction + Tabs.Length) % Tabs.Length;
+            parents.Clear(); title = Tabs[tab]; message = ""; selected = firstVisible = 0; items = new List<Item>();
+            if (tab == 2) WarmSceneNames();
+            Rebuild();
+            panel.Invalidate();
+        });
+    }
+
     static void Rebuild()
     {
         var list = new List<Item>();
+        if (tab == 1) AudioItems(list);
+        else if (tab == 2) LightsItems(list);
+        else if (tab == 3) SystemItems(list);
+        else PartyItems(list);
+        list.Add(new Item { Text = "Close", Icon = "close" });
+        string current = selected < items.Count ? items[selected].Text : null;
+        items = list;
+        int keep = current == null ? -1 : items.FindIndex(i => i.Text == current);
+        selected = tab == 0 && DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : Math.Max(0, Math.Min(selected, items.Count - 1));
+    }
+
+    // --- Audio tab: where the sound goes, and how loud ---
+    static void AudioItems(List<Item> list)
+    {
+        try
+        {
+            foreach (var d in CouchKit.OutputDevices())
+            {
+                string id = d.Item2, name = d.Item1;
+                bool headset = name.IndexOf("Headset", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Headphone", StringComparison.OrdinalIgnoreCase) >= 0;
+                list.Add(new Item { Text = (d.Item3 ? "" : "Play on ") + ShortDevice(name), Icon = headset ? "headset" : "tv", Dot = d.Item3 ? (Color?)Green : null, Action = () => CouchKit.SetOutput(id, ShortDevice(name)) });
+            }
+        }
+        catch (Exception ex) { CouchKit.Log("Guide: audio devices: " + ex.Message); }
+        foreach (var v in VolumeMenu()) list.Add(v);
+    }
+
+    // "Headset Earphone (CORSAIR VIRTUOSO SE Wireless Gaming Headset)" -> "CORSAIR VIRTUOSO SE Wireless Gaming Headset"
+    static string ShortDevice(string name)
+    {
+        int open = name.IndexOf('('), close = name.LastIndexOf(')');
+        return open > 0 && close > open ? name.Substring(open + 1, close - open - 1) : name;
+    }
+
+    // --- Lights tab: Home Assistant scenes, room lights, PC lighting ---
+    static readonly Dictionary<string, string> sceneNames = new Dictionary<string, string>();
+    static void WarmSceneNames()
+    {
+        if (!SmartHome.HasHomeAssistant) return;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
+            OnUi(() => { if (IsOpen && tab == 2 && parents.Count == 0) { Rebuild(); panel.Invalidate(); } });
+        });
+    }
+
+    static void LightsItems(List<Item> list)
+    {
+        if (SmartHome.HasHomeAssistant)
+        {
+            foreach (var s in SmartHome.Scenes)
+            {
+                string entity = s, name;
+                lock (sceneNames) if (!sceneNames.TryGetValue(entity, out name)) name = entity.Substring(entity.IndexOf('.') + 1).Replace('_', ' ');
+                list.Add(new Item { Text = name, Icon = "bulb", Action = () => SmartHome.Activate(entity) });
+            }
+            list.Add(new Item { Text = "Room lights on", Icon = "bulb", Action = () => SmartHome.SetRoomLights(true) });
+            list.Add(new Item { Text = "Room lights off", Icon = "bulboff", Action = () => SmartHome.SetRoomLights(false) });
+        }
+        else list.Add(new Item { Text = "Home Assistant not set up", Icon = "bulb" });
+        list.Add(new Item { Text = Lighting.Off ? "PC lighting on" : "PC lighting off", Icon = Lighting.Off ? "bulb" : "bulboff", Direct = true,
+                            Action = () => { Lighting.Off = !Lighting.Off; ShowMessage(Lighting.Off ? "PC lighting off" : "PC lighting on"); return ""; } });
+    }
+
+    // --- System tab ---
+    static void SystemItems(List<Item> list)
+    {
+        list.Add(new Item { Text = "Screenshot", Icon = "camera", Direct = true, Action = () =>
+        {
+            Close();
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Thread.Sleep(450);   // let the Guide get out of the picture
+                try { CouchKit.Screenshot(); OnUi(() => ShowHud("camera", "Screenshot saved", "Pictures\\CouchKit")); }
+                catch (Exception ex) { CouchKit.Log("Screenshot failed: " + ex.Message); }
+            });
+            return "";
+        } });
+        list.Add(new Item { Text = "Close game", Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
+        list.Add(new Item { Text = "Turn screen off", Icon = "tv", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(400); CouchKit.ScreenOff(); }); return ""; } });
+        list.Add(new Item { Text = "Restart Playnite ›", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
+        list.Add(new Item { Text = "Restart PC ›", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
+        list.Add(new Item { Text = "Shut down ›", Icon = "power", Submenu = () => Confirm("Shut down", () => { CouchKit.PowerAction(false); return ""; }) });
+    }
+
+    static List<Item> Confirm(string what, Func<string> action)
+    {
+        return new List<Item>
+        {
+            new Item { Text = "Yes, " + what.ToLowerInvariant(), Icon = "accept", Action = action, CloseAfter = true },
+            new Item { Text = "Cancel", Icon = "decline", Direct = true, Action = () => { GoBack(); return ""; } },
+        };
+    }
+
+    static void ShowMessage(string m) { message = m; if (panel != null) panel.Invalidate(); }
+
+    // --- Party tab ---
+    static void PartyItems(List<Item> list)
+    {
         if (!DiscordBridge.Running)
             list.Add(new Item { Text = "Start Discord", Icon = "power", Action = DiscordBridge.StartDiscord });
         if (DiscordBridge.Incoming)
@@ -244,14 +365,8 @@ static class PartyPanel
         }
         list.Add(new Item { Text = "Chats ›", Icon = "chat", Submenu = ChatsMenu });
         list.Add(new Item { Text = "Voice channels ›", Icon = "server", Submenu = ServersMenu });
-        list.Add(new Item { Text = "Volume ›", Icon = "volume", Submenu = VolumeMenu });
         list.Add(new Item { Text = DiscordBridge.Deafened ? "Undeafen" : "Deafen", Icon = DiscordBridge.Deafened ? "deafened" : "headset", Action = DiscordBridge.ToggleDeafen });
         list.Add(new Item { Text = "Open Discord (mouse mode)", Icon = "mouse", Direct = true, Action = () => { Close(); EnterMouseMode(); return ""; } });
-        list.Add(new Item { Text = "Close", Icon = "close" });
-        string current = selected < items.Count ? items[selected].Text : null;
-        items = list;
-        int keep = current == null ? -1 : items.FindIndex(i => i.Text == current);
-        selected = DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : Math.Min(selected, items.Count - 1);
     }
 
     // Sub-menus, loaded live from Discord on its thread
@@ -314,8 +429,12 @@ static class PartyPanel
     // --- Banner and HUD ---
 
     static bool lastIncoming, lastCalling;
+    static string lastBattery = "";
     static void Tick()
     {
+        try { battery = CouchKit.ControllerBattery(); } catch { battery = ""; }
+        if ((battery == "Low" || battery == "Empty") && battery != lastBattery) ShowHud("batterylow", "Controller battery " + battery.ToLowerInvariant(), "Time to charge it soon");
+        lastBattery = battery;
         if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); }
         bool incoming = DiscordBridge.Incoming;
         // "Calling …" shows for 8 seconds after starting a call, so there's visible feedback
@@ -431,11 +550,25 @@ static class PartyPanel
         {
             var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
             int x = unit * 2, y = unit * 2, w = size.Width - x * 2;
-            Line(g, title, titleFont, Text, new RectangleF(x, y, w, unit * 2.4f));
+            if (parents.Count == 0)
+            {
+                float tx = x;
+                using (var tabFont = new Font("Segoe UI Semibold", unit * 1.15f, GraphicsUnit.Pixel))
+                    for (int t = 0; t < Tabs.Length; t++)
+                    {
+                        var sz = TextRenderer.MeasureText(Tabs[t], tabFont);
+                        Line(g, Tabs[t], tabFont, t == tab ? Text : Dim, new RectangleF(tx, y + unit * 0.5f, sz.Width + 4, tabFont.Height * 1.3f));
+                        if (t == tab)
+                            using (var bar = new LinearGradientBrush(new RectangleF(tx, 0, sz.Width, 10), Aqua, Magenta, LinearGradientMode.Horizontal))
+                                g.FillRectangle(bar, tx, y + unit * 2.1f, sz.Width, unit / 6f);
+                        tx += sz.Width + unit * 1.1f;
+                    }
+            }
+            else Line(g, title, titleFont, Text, new RectangleF(x, y, w - unit * 4, unit * 2.4f));
             y += unit * 3;
 
             // Status card: incoming call, current call, or not in a call
-            if (parents.Count == 0)
+            if (parents.Count == 0 && tab == 0)
             {
                 var card = new RectangleF(x - unit / 2, y, w, unit * 3.2f);
                 using (var path = RoundedPath(card, unit * 0.6f))
@@ -512,7 +645,20 @@ static class PartyPanel
             if (adjustable) hx = Hint(g, "◀▶", Text, "volume", small, hx, hy, hs);
             else hx = Hint(g, "A", Green, "select", small, hx, hy, hs);
             hx = Hint(g, "B", Red, "back", small, hx, hy, hs);
-            Hint(g, "game", Aqua, "Xbox twice: close", small, hx, hy, hs);
+            hx = Hint(g, "LB", Dim, "", small, hx, hy, hs) - hs * 0.7f;
+            hx = Hint(g, "RB", Dim, "tabs", small, hx, hy, hs);
+            // Controller battery, bottom-right
+            if (battery.Length > 0)
+            {
+                bool low = battery == "Low" || battery == "Empty";
+                string key = battery == "Wired" ? "wired" : low ? "batterylow" : "battery";
+                string label = battery == "Wired" ? "wired" : battery.ToLowerInvariant();
+                int lw = TextRenderer.MeasureText(label, small).Width;
+                float bx = size.Width - x - lw;
+                Line(g, label, small, low ? Red : Dim, new RectangleF(bx, hy + (hs - small.Height) / 2, lw + 4, small.Height * 1.3f));
+                using (var bb = new SolidBrush(low ? Red : Dim)) DrawIcon(g, key, bx - unit * 1.6f, hy + (hs - unit * 1.1f) / 2, unit * 1.1f, bb);
+            }
+
         }
     }
 
@@ -590,6 +736,15 @@ static class PartyPanel
             }
         };
         render("panel.png", 1305, 2160, PaintPanel);
+        battery = "Medium";
+        for (int t = 1; t < Tabs.Length; t++)
+        {
+            tab = t; items.Clear(); parents.Clear(); title = Tabs[t]; selected = 1;
+            if (t == 2) foreach (var e in SmartHome.Scenes) { string n = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = n; }
+            Rebuild();
+            render("panel-" + Tabs[t].ToLowerInvariant() + ".png", 1305, 2160, PaintPanel);
+        }
+        tab = 0;
         hudIcon = "micoff"; hudTitle = "Microphone muted"; hudDetail = "";
         render("hud-muted.png", 921, 172, PaintHud);
         hudIcon = "message"; hudTitle = "Matt"; hudDetail = "2 new messages";
