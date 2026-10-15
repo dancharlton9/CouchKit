@@ -261,6 +261,8 @@ static class PartyPanel
         {
             string name = c.Name;
             string extra = c.Group ? "  ·  group" + (c.Members > 0 ? " of " + c.Members : "") : c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "";
+            int fresh = DiscordBridge.Unread(name);
+            if (fresh > 0) extra += "  ·  " + fresh + " new";
             return new Item { Text = name + extra, Icon = c.Group ? "people" : "call", Action = () => DiscordBridge.CallFriend(name), CloseAfter = true, Dot = StatusColour(c.Status) };
         }).ToList();
     }
@@ -384,6 +386,28 @@ static class PartyPanel
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
     }
 
+    // A hint like Xbox's: a coloured round button badge followed by its label. Returns the next x.
+    static float Hint(Graphics g, string button, Color colour, string label, Font font, float x, float y, float size)
+    {
+        using (var fill = new SolidBrush(Color.FromArgb(50, colour)))
+        using (var ring = new Pen(colour, size / 12f))
+        {
+            var r = new RectangleF(x, y, size, size);
+            g.FillEllipse(fill, r);
+            g.DrawEllipse(ring, r);
+        }
+        bool glyph = Glyphs.ContainsKey(button);
+        using (var bf = glyph ? new Font(iconFont, size * 0.5f, GraphicsUnit.Pixel) : new Font("Segoe UI Semibold", size * (button.Length > 1 ? 0.38f : 0.58f), GraphicsUnit.Pixel))
+        {
+            string s = glyph ? Glyphs[button] : button;
+            var sz = g.MeasureString(s, bf);
+            using (var b = new SolidBrush(colour)) g.DrawString(s, bf, b, x + (size - sz.Width) / 2 + size * 0.02f, y + (size - sz.Height) / 2);
+        }
+        float lx = x + size * 1.25f;
+        Line(g, label, font, Dim, new RectangleF(lx, y + (size - font.Height) / 2, 1000, font.Height * 1.3f));
+        return lx + TextRenderer.MeasureText(label, font).Width + size * 0.9f;
+    }
+
     static void DrawIcon(Graphics g, string key, float x, float y, float size, Brush brush)
     {
         string glyph;
@@ -484,7 +508,11 @@ static class PartyPanel
             if (firstVisible + visible < items.Count) g.DrawString("▼", small, dim, size.Width - x * 2, y);
             if (message.Length > 0) Line(g, message, small, Dim, new RectangleF(x, size.Height - unit * 4.2f, w, unit * 1.4f));
             bool adjustable = selected < items.Count && items[selected].Adjust != null;
-            g.DrawString(adjustable ? "◀ ▶  volume      B  back" : "A  select      B  back      Xbox ×2  close", small, dim, x, size.Height - unit * 2.5f);
+            float hy = size.Height - unit * 2.9f, hs = unit * 1.3f, hx = x;
+            if (adjustable) hx = Hint(g, "◀▶", Text, "volume", small, hx, hy, hs);
+            else hx = Hint(g, "A", Green, "select", small, hx, hy, hs);
+            hx = Hint(g, "B", Red, "back", small, hx, hy, hs);
+            Hint(g, "game", Aqua, "Xbox twice: close", small, hx, hy, hs);
         }
     }
 
@@ -570,6 +598,116 @@ static class PartyPanel
         render("banner.png", 1766, 259, PaintBanner);
         items.Clear(); Rebuild(); selected = 0;
         render("panel-incoming.png", 1305, 2160, PaintPanel);
+    }
+
+    // For showing how it looks: CouchKit.exe --demo <folder> <background image> renders a scripted
+    // 1920x1080 30 fps sequence (HUD, panel, volume, incoming call) as numbered PNG frames, using
+    // the real drawing code over a game's artwork. Encode with ffmpeg afterwards.
+    public static void Demo(DiscordSettings settings, string folder, string background)
+    {
+        S = settings;
+        using (var fonts = new InstalledFontCollection())
+            if (fonts.Families.Any(f => f.Name == "Segoe Fluent Icons")) iconFont = "Segoe Fluent Icons";
+        const int W = 1920, H = 1080, Fps = 30;
+        int panelW = W * 34 / 100, hudW = W * 24 / 100, hudH = H * 8 / 100, banW = W * 46 / 100, banH = H * 12 / 100;
+        lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
+
+        Bitmap bg = new Bitmap(W, H);
+        using (var src = Image.FromFile(background))
+        using (var g = Graphics.FromImage(bg))
+        {
+            float scale = Math.Max((float)W / src.Width, (float)H / src.Height);
+            float sw = src.Width * scale, sh = src.Height * scale;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(src, (W - sw) / 2, (H - sh) / 2, sw, sh);
+        }
+
+        Func<double, double> ease = t => 1 - Math.Pow(1 - Math.Max(0, Math.Min(1, t)), 3);
+        // Fade in over 0.25 s, hold, fade out over the last 0.5 s
+        Func<double, double, double, double> window = (t, start, end) =>
+            t < start || t > end ? 0 : Math.Min(Math.Min(1, (t - start) / 0.25), Math.Min(1, (end - t) / 0.5));
+
+        var volume = new List<Item>
+        {
+            new Item { Text = "Game", Icon = "game", Level = 80, Adjust = d => 0 },
+            new Item { Text = "Discord", Icon = "chat", Level = 100, Adjust = d => 0 },
+            new Item { Text = "Everything", Icon = "volume", Level = 60, Adjust = d => 0 },
+        };
+
+        int frames = (int)(21.5 * Fps);
+        for (int n = 0; n < frames; n++)
+        {
+            double t = (double)n / Fps;
+            // --- Script ---
+            DiscordBridge.Running = true;
+            DiscordBridge.Incoming = t >= 10.8 && t < 14.6;
+            DiscordBridge.IncomingFrom = "Matt";
+            DiscordBridge.InCall = t < 10.6 || t >= 14.6;
+            DiscordBridge.CallName = t < 10.6 ? "General / Charlton Home" : "Matt";
+            DiscordBridge.Muted = t >= 17.6;
+            double panelX = -1;   // fraction shown: 0 hidden .. 1 fully in
+            bool inVolume = false;
+            if (t >= 4.4 && t < 10.4) panelX = t < 4.7 ? ease((t - 4.4) / 0.3) : t > 10.1 ? 1 - ease((t - 10.1) / 0.3) : 1;
+            if (t >= 13.4 && t < 14.9) panelX = t < 13.7 ? ease((t - 13.4) / 0.3) : t > 14.6 ? 1 - ease((t - 14.6) / 0.3) : 1;
+            if (panelX >= 0)
+            {
+                items.Clear(); parents.Clear(); title = "Party"; selected = 0; Rebuild();
+                if (t < 10.4)
+                {
+                    int volumeRow = items.FindIndex(i => i.Text.StartsWith("Volume"));
+                    selected = Math.Min(volumeRow, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
+                    if (t >= 7.5 && t < 9.9)
+                    {
+                        inVolume = true;
+                        parents.Push(new Level { Title = "Party", Items = items, Selected = selected });
+                        title = "Volume"; items = volume; selected = 0;
+                        volume[0].Level = t < 8.0 ? 80 : Math.Max(45, 80 - 5 * (int)((t - 8.0) / 0.2));
+                    }
+                }
+                else selected = 0;   // incoming: Answer
+            }
+            hudIcon = t < 4.2 ? "people" : t < 17.5 ? "people" : "micoff";
+            hudTitle = t < 4.2 ? "Connected" : t < 17.5 ? "Connected" : "Microphone muted";
+            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 17.5 ? "Matt" : "";
+            double hudAlpha = Math.Max(window(t, 1.0, 4.2), Math.Max(window(t, 14.9, 17.4), window(t, 17.6, 20.6)));
+            double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 10.8, 13.6) : 0;
+
+            // --- Compose ---
+            using (var frame = new Bitmap(W, H))
+            using (var g = Graphics.FromImage(frame))
+            {
+                g.DrawImage(bg, 0, 0);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                if (banAlpha > 0) Composite(g, new Rectangle((W - banW) / 2, H * 4 / 100, banW, banH), banH / 5, banAlpha, PaintBanner, Card);
+                if (hudAlpha > 0) Composite(g, new Rectangle(W - hudW - W * 2 / 100, H * 3 / 100, hudW, hudH), hudH / 4, hudAlpha, PaintHud, Card);
+                if (panelX >= 0)
+                {
+                    using (var shade = new SolidBrush(Color.FromArgb((int)(90 * panelX), 0, 0, 0))) g.FillRectangle(shade, 0, 0, W, H);
+                    Composite(g, new Rectangle((int)(-panelW + panelW * panelX), 0, panelW, H), 0, 1, PaintPanel, Back);
+                }
+                frame.Save(System.IO.Path.Combine(folder, string.Format("f{0:D4}.png", n)), System.Drawing.Imaging.ImageFormat.Png);
+            }
+            if (inVolume) { items = parents.Pop().Items; }
+        }
+        bg.Dispose();
+    }
+
+    // Draws one of the windows (panel, banner, HUD) onto a frame: rounded, at an opacity
+    static void Composite(Graphics g, Rectangle r, int radius, double alpha, Action<Graphics, Size> paint, Color backColour)
+    {
+        using (var layer = new Bitmap(r.Width, r.Height))
+        {
+            using (var lg = Graphics.FromImage(layer)) { lg.Clear(backColour); paint(lg, r.Size); }
+            var matrix = new System.Drawing.Imaging.ColorMatrix { Matrix33 = (float)alpha };
+            using (var attrs = new System.Drawing.Imaging.ImageAttributes())
+            {
+                attrs.SetColorMatrix(matrix);
+                var state = g.Save();
+                if (radius > 0) using (var path = RoundedPath(r, radius)) g.SetClip(path);
+                g.DrawImage(layer, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
+                g.Restore(state);
+            }
+        }
     }
 
     // Shown on top without taking the focus from the game

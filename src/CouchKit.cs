@@ -405,7 +405,12 @@ static class CouchKit
 
     static void Main(string[] args)
     {
-        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
+        if (args.Length > 2 && args[0] == "--demo")   // demo video frames: --demo <folder> <background image>
+        {
+            string note;
+            PartyPanel.Demo(Settings.Load(out note).Discord, args[1], args[2]);
+            return;
+        }        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
         {
             string note;
             PartyPanel.Preview(Settings.Load(out note).Discord, args[1]);

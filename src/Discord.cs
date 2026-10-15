@@ -28,6 +28,8 @@ static class DiscordBridge
     // Last known status of people in your DM list (filled whenever the chat list is read)
     public static readonly Dictionary<string, string> Statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, int> unread = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    // Unread DM count per person, as last seen in the server bar (0 if none)
+    public static int Unread(string name) { lock (unread) { int n; return unread.TryGetValue(name, out n) ? n : 0; } }
     static readonly Regex UnreadItem = new Regex(@"^(?<name>.+?) , (?<n>\d+) unread messages?$", RegexOptions.IgnoreCase);
     static bool callLayoutRecorded, unreadPrimed;
     static readonly BlockingCollection<Action> work = new BlockingCollection<Action>();
@@ -112,8 +114,11 @@ static class DiscordBridge
             unread.TryGetValue(kv.Key, out before);
             if (announce && kv.Value > before) Notify("message", kv.Key, kv.Value == 1 ? "1 new message" : kv.Value + " new messages");
         }
-        unread.Clear();
-        foreach (var kv in now) unread[kv.Key] = kv.Value;
+        lock (unread)
+        {
+            unread.Clear();
+            foreach (var kv in now) unread[kv.Key] = kv.Value;
+        }
     }
 
     // Once per run, when first in a call: write which controls Discord shows during a call
