@@ -1629,7 +1629,7 @@ static class GuidePanel
             new Item { Text = "Alex", Sub = "Online  ·  Playing Call of Duty", Badge = "2", Icon = "chat", Dot = Green, Submenu = () => null },
             new Item { Text = "Sam", Sub = "Idle", Icon = "chat", Dot = StatusColour("Idle"), Submenu = () => null },
             new Item { Text = "Saturday squad", Sub = "Group of 5  ·  in a call", Icon = "people", Submenu = () => null },
-            new Item { Text = "Alex", Sub = "Offline", Icon = "chat", Dot = StatusColour("Offline"), Submenu = () => null },
+            new Item { Text = "Jordan", Sub = "Offline", Icon = "chat", Dot = StatusColour("Offline"), Submenu = () => null },
         };
     }
 

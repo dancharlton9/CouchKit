@@ -2,7 +2,9 @@
 
 **[Website, screenshots and video →](https://dancharlton9.github.io/CouchKit/)** · [Download](https://github.com/dancharlton9/CouchKit/releases/latest) · [Support on Ko-fi ☕](https://ko-fi.com/fiisaac)
 
-![The Guide](docs/media/guide-demo.gif)
+[![Watch the CouchKit trailer on YouTube](https://img.youtube.com/vi/83atqug9pTE/maxresdefault.jpg)](https://www.youtube.com/watch?v=83atqug9pTE)
+
+*▶ [Watch the 50-second trailer](https://www.youtube.com/watch?v=83atqug9pTE)*
 
 Makes a Windows PC behave like a games console on the TV, around [Playnite](https://playnite.link/)'s fullscreen mode. It's for PCs that you also manage or stream from remotely with Moonlight, through [Sunshine](https://github.com/LizardByte/Sunshine) or [Apollo](https://github.com/ClassicOldSong/Apollo).
 
