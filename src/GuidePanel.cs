@@ -598,12 +598,9 @@ static class GuidePanel
             g.DrawEllipse(ring, r);
         }
         bool glyph = Glyphs.ContainsKey(button);
-        using (var bf = glyph ? new Font(iconFont, size * 0.5f, GraphicsUnit.Pixel) : new Font("Segoe UI Semibold", size * (button.Length > 1 ? 0.38f : 0.58f), GraphicsUnit.Pixel))
-        {
-            string s = glyph ? Glyphs[button] : button;
-            var sz = g.MeasureString(s, bf);
-            using (var b = new SolidBrush(colour)) g.DrawString(s, bf, b, x + (size - sz.Width) / 2 + size * 0.02f, y + (size - sz.Height) / 2);
-        }
+        using (var b = new SolidBrush(colour))
+            Centred(g, glyph ? Glyphs[button] : button, glyph ? iconFont : "Segoe UI Semibold", glyph ? FontStyle.Regular : FontStyle.Bold,
+                    size * (glyph ? 0.5f : button.Length > 1 ? 0.36f : 0.5f), b, x + size / 2, y + size / 2);
         float lx = x + size * 1.25f;
         Line(g, label, font, Dim, new RectangleF(lx, y + (size - font.Height) / 2, 1000, font.Height * 1.3f));
         return lx + TextRenderer.MeasureText(label, font).Width + size * 0.9f;
@@ -613,7 +610,22 @@ static class GuidePanel
     {
         string glyph;
         if (key == null || !Glyphs.TryGetValue(key, out glyph)) return;
-        using (var f = new Font(iconFont, size, GraphicsUnit.Pixel)) g.DrawString(glyph, f, brush, x, y);
+        Centred(g, glyph, iconFont, FontStyle.Regular, size, brush, x + size / 2, y + size / 2);
+    }
+
+    // Draws text so its visible shape (not its font box) is centred on (cx, cy). Icon glyphs and
+    // single letters have uneven space around them in the font, which puts them off-centre otherwise.
+    static void Centred(Graphics g, string s, string family, FontStyle style, float size, Brush brush, float cx, float cy)
+    {
+        using (var ff = new FontFamily(family))
+        using (var path = new GraphicsPath())
+        {
+            path.AddString(s, ff, (int)style, size, PointF.Empty, StringFormat.GenericTypographic);
+            var b = path.GetBounds();
+            if (b.Width <= 0) return;
+            using (var m = new Matrix()) { m.Translate(cx - (b.Left + b.Width / 2), cy - (b.Top + b.Height / 2)); path.Transform(m); }
+            g.FillPath(brush, path);
+        }
     }
 
     // Game covers, loaded once and kept small
@@ -687,7 +699,7 @@ static class GuidePanel
             // Top bar: tabs as icons, the current one as a pill with its name; the clock on the right
             string clock = DateTime.Now.ToString("HH:mm");
             int clockW = TextRenderer.MeasureText(clock, bold).Width;
-            Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, y + unit * 0.45f, clockW + 4, bold.Height * 1.3f));
+            Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, y + (unit * 2.0f - bold.Height) / 2, clockW + 4, bold.Height * 1.3f));
             float tx = x - unit * 0.5f, tabH = unit * 2.0f, iconS = unit * 1.05f;
             for (int t = 0; t < Tabs.Length; t++)
             {
@@ -703,7 +715,7 @@ static class GuidePanel
                         using (var pen = new Pen(edge, unit / 10f)) g.DrawPath(pen, path);
                     }
                 using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(tx, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
-                    DrawIcon(g, TabIcons[t], tx + unit * 0.75f, y + (tabH - iconS) / 2 - unit * 0.05f, iconS, ib);
+                    DrawIcon(g, TabIcons[t], tx + (on ? unit * 0.75f : (tw - iconS) / 2), y + (tabH - iconS) / 2, iconS, ib);
                 if (on) Line(g, Tabs[t], bold, Text, new RectangleF(tx + unit * 2.25f, y + (tabH - bold.Height) / 2, labelW + 4, bold.Height * 1.3f));
                 tx += tw + unit * 0.15f;
             }
@@ -713,9 +725,9 @@ static class GuidePanel
             if (parents.Count > 0)
             {
                 string trail = string.Join("  ›  ", parents.Reverse().Select(l => l.Title).ToArray());
-                Line(g, trail.ToUpperInvariant(), heading, Dim, new RectangleF(x, y, w, heading.Height * 1.3f));
+                Line(g, trail.ToUpperInvariant(), heading, Dim, new RectangleF(x + unit / 2, y, w, heading.Height * 1.3f));
                 y += (int)(heading.Height * 1.4f);
-                Line(g, title, titleFont, Text, new RectangleF(x, y, w, titleFont.Height * 1.25f));
+                Line(g, title, titleFont, Text, new RectangleF(x + unit * 0.4f, y, w, titleFont.Height * 1.25f));
                 y += (int)(titleFont.Height * 1.5f);
             }
 
@@ -755,7 +767,7 @@ static class GuidePanel
                 }
                 else
                     using (var iconBrush = new LinearGradientBrush(new RectangleF(card.Left, card.Top, unit * 3, unit * 3), Aqua, Magenta, 45f))
-                        DrawIcon(g, icon, card.Left + unit * 0.7f, card.Top + unit * 0.95f, unit * 1.6f, iconBrush);
+                        DrawIcon(g, icon, card.Left + unit * 0.75f, card.Top + (card.Height - unit * 1.6f) / 2, unit * 1.6f, iconBrush);
                 float cw = card.Right - cx - unit * 0.6f;
                 Line(g, over, heading, Aqua, new RectangleF(cx, card.Top + unit * 0.45f, cw, heading.Height * 1.3f));
                 Line(g, line1, bold, Text, new RectangleF(cx, card.Top + unit * 1.15f, cw, bold.Height * 1.25f));
@@ -781,7 +793,7 @@ static class GuidePanel
                 int rowH = heights[i];
                 if (item.Header)
                 {
-                    Line(g, item.Text.ToUpperInvariant(), heading, Dim, new RectangleF(x, y + rowH - heading.Height * 1.35f, w, heading.Height * 1.3f));
+                    Line(g, item.Text.ToUpperInvariant(), heading, Dim, new RectangleF(x + unit / 2, y + rowH - heading.Height * 1.35f, w, heading.Height * 1.3f));
                     y += rowH + gap;
                     continue;
                 }
@@ -806,7 +818,7 @@ static class GuidePanel
                 }
                 else if (item.Icon != null)
                 {
-                    float iy = item.Wrap ? y + unit * 0.55f : y + (rowH - unit * 1.1f) / 2;
+                    float iy = item.Wrap ? y + unit * 0.5f + heading.Height * 0.62f - unit * 0.55f : y + (rowH - unit * 1.1f) / 2;
                     Brush ib = item.Icon == "decline" || item.Icon == "hangup" ? new SolidBrush(Red) : item.Icon == "accept" ? new SolidBrush(Green)
                              : sel ? (Brush)new LinearGradientBrush(new RectangleF(textX, y, unit * 1.2f, rowH), Aqua, Magenta, 45f) : new SolidBrush(Dim);
                     DrawIcon(g, item.Icon, textX, iy, unit * 1.1f, ib);
@@ -849,13 +861,15 @@ static class GuidePanel
                         textRight = (int)(barX - unit * 3f);
                     }
                 }
+                int nameRight = textRight;   // the name leaves room for its status dot
                 if (item.Dot.HasValue)
                 {
                     // Status dot just after the name
-                    int d = (int)(unit * 0.5);
+                    float d = unit * 0.45f;
+                    nameRight = textRight - (int)(d + unit * 0.6f);
                     float ty = item.Sub.Length > 0 ? y + rowH / 2f - body.Height * 0.95f : y + (rowH - body.Height) / 2f;
-                    int nameW = Math.Min(TextRenderer.MeasureText(item.Text, sel ? bold : body).Width, textRight - textX - d - unit);
-                    using (var dot = new SolidBrush(item.Dot.Value)) g.FillEllipse(dot, textX + nameW + unit * 0.4f, ty + (body.Height - d) / 2f + unit * 0.05f, d, d);
+                    int nameW = Math.Min(TextRenderer.MeasureText(g, item.Text, sel ? bold : body, new Size(10000, 1000), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width, nameRight - textX);
+                    using (var dot = new SolidBrush(item.Dot.Value)) g.FillEllipse(dot, textX + nameW + unit * 0.35f, ty + body.Height * 0.6f - d / 2, d, d);
                 }
                 Color main = item.Quiet ? Dim : sel ? Text : Color.FromArgb(205, 205, 222);
                 if (item.Wrap)
@@ -867,10 +881,10 @@ static class GuidePanel
                 }
                 else if (item.Sub.Length > 0)
                 {
-                    Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + rowH / 2f - body.Height * 0.95f, textRight - textX, body.Height * 1.3f));
+                    Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + rowH / 2f - body.Height * 0.95f, nameRight - textX, body.Height * 1.3f));
                     Line(g, item.Sub, small, Dim, new RectangleF(textX, y + rowH / 2f + unit * 0.12f, textRight - textX, small.Height * 1.3f));
                 }
-                else Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + (rowH - body.Height) / 2, textRight - textX, body.Height * 1.3f));
+                else Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + (rowH - body.Height) / 2, nameRight - textX, body.Height * 1.3f));
                 y += rowH + gap;
             }
             if (last < items.Count - 1) DrawIcon(g, "down", x + w - unit * 0.6f, y - unit * 0.1f, unit * 0.7f, dim);
@@ -879,7 +893,7 @@ static class GuidePanel
             if (message.Length > 0)
             {
                 using (var mb = new LinearGradientBrush(new RectangleF(x, 0, unit * 1.2f, 10), Aqua, Magenta, LinearGradientMode.Horizontal))
-                    DrawIcon(g, "info", x, size.Height - unit * 4.1f, unit * 0.8f, mb);
+                    DrawIcon(g, "info", x + unit * 0.1f, size.Height - unit * 4.1f + (small.Height - unit * 0.8f) / 2, unit * 0.8f, mb);
                 Line(g, message, small, Text, new RectangleF(x + unit * 1.2f, size.Height - unit * 4.1f, w - unit * 1.2f, unit * 1.4f));
             }
             using (var sep = new Pen(Color.FromArgb(40, 255, 255, 255), Math.Max(1, unit / 20f))) g.DrawLine(sep, x, size.Height - unit * 3.4f, x + w, size.Height - unit * 3.4f);
@@ -916,7 +930,7 @@ static class GuidePanel
         using (var dim = new SolidBrush(Dim))
         using (var iconBrush = new LinearGradientBrush(new Rectangle(0, 0, unit * 4, unit * 4), Aqua, Magenta, 45f))
         {
-            DrawIcon(g, "call", unit * 0.9f, unit * 1.1f, unit * 2.2f, iconBrush);
+            DrawIcon(g, "call", unit * 0.9f, (size.Height - unit / 3f - unit * 2.2f) / 2, unit * 2.2f, iconBrush);
             float tx = unit * 4;
             if (DiscordBridge.Incoming)
             {
@@ -946,7 +960,7 @@ static class GuidePanel
         {
             var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
             Brush iconBrush = hudIcon == "micoff" || hudIcon == "hangup" || hudIcon == "deafened" ? (Brush)new SolidBrush(Red) : new LinearGradientBrush(new Rectangle(0, 0, unit * 3, unit * 3), Aqua, Magenta, 45f);
-            DrawIcon(g, hudIcon, unit * 0.9f, unit * 0.9f, unit * 1.9f, iconBrush);
+            DrawIcon(g, hudIcon, unit * 0.9f, (size.Height - unit * 1.9f) / 2, unit * 1.9f, iconBrush);
             iconBrush.Dispose();
             float tx = unit * 3.4f, tw = size.Width - tx - unit * 0.6f;
             bool two = hudDetail.Length > 0;
@@ -997,19 +1011,29 @@ static class GuidePanel
         // Sub-menus with made-up chats and messages
         DiscordBridge.Incoming = false; tab = PartyTab;
         parents.Clear(); parents.Push(new Level { Title = "Party", Items = items, Selected = 0 });
-        title = "Chats";
-        items = new List<Item>
+        title = "Chats"; items = MockChats(); selected = 0;
+        render("panel-chats.png", 1305, 2160, PaintPanel);
+        parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
+        title = "Matt"; items = MockChat(); selected = 3;
+        render("panel-chat.png", 1305, 2160, PaintPanel);
+        parents.Clear();
+    }
+
+    // Made-up chats and messages for the preview and demo (never real ones)
+    static List<Item> MockChats()
+    {
+        return new List<Item>
         {
             new Item { Text = "Matt", Sub = "Online  ·  Playing Call of Duty", Badge = "2", Icon = "chat", Dot = Green, Submenu = () => null },
             new Item { Text = "Sam", Sub = "Idle", Icon = "chat", Dot = StatusColour("Idle"), Submenu = () => null },
             new Item { Text = "Saturday squad", Sub = "Group of 5  ·  in a call", Icon = "people", Submenu = () => null },
             new Item { Text = "Alex", Sub = "Offline", Icon = "chat", Dot = StatusColour("Offline"), Submenu = () => null },
         };
-        selected = 0;
-        render("panel-chats.png", 1305, 2160, PaintPanel);
-        parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
-        title = "Matt";
-        items = new List<Item>
+    }
+
+    static List<Item> MockChat()
+    {
+        return new List<Item>
         {
             new Item { Text = "Call Matt", Icon = "call", Action = () => "" },
             new Item { Text = "Quick reply", Icon = "message", Submenu = () => null },
@@ -1018,14 +1042,21 @@ static class GuidePanel
             new Item { Text = "Dan", Sub = "Yeah, give me 20 mins", Wrap = true, Icon = "quote", Quiet = true },
             new Item { Text = "Matt", Sub = "👍", Wrap = true, Icon = "quote", Quiet = true },
         };
-        selected = 3;
-        render("panel-chat.png", 1305, 2160, PaintPanel);
-        parents.Clear();
     }
 
-    // For showing how it looks: CouchKit.exe --demo <folder> <background image> renders a scripted
-    // 1920x1080 30 fps sequence (HUD, panel, volume, incoming call) as numbered PNG frames, using
-    // the real drawing code over a game's artwork. Encode with ffmpeg afterwards.
+    // Index of the k-th selectable row (headings don't count)
+    static int Nth(int k)
+    {
+        int count = -1, last = 0;
+        for (int i = 0; i < items.Count; i++)
+            if (!items[i].Header) { last = i; if (++count == k) return i; }
+        return last;
+    }
+
+    // For showing how it looks: CouchKit.exe --demo <folder> [background image] renders a scripted
+    // 1920x1080 30 fps tour of the Guide (Home, Party, a chat, Audio, Lights, System), then an
+    // incoming call, as numbered PNG frames, using the real drawing code over a game's artwork.
+    // The most recently played game stands in as the running one. Encode with ffmpeg afterwards.
     public static void Demo(DiscordSettings settings, string folder, string background)
     {
         S = settings;
@@ -1034,8 +1065,11 @@ static class GuidePanel
         const int W = 1920, H = 1080, Fps = 30;
         int panelW = W * 34 / 100, hudW = W * 24 / 100, hudH = H * 8 / 100, banW = W * 46 / 100, banH = H * 12 / 100;
         lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
-
         foreach (var e in SmartHome.Scenes) { string sn = SmartHome.NameOf(e); lock (sceneNames) sceneNames[e] = sn; }   // scene names for the Lights tab
+        var playing = PlayniteLink.Recent().FirstOrDefault();
+        if (playing != null) PlayniteLink.Pretend = playing.Name;
+        if (string.IsNullOrEmpty(background) && playing != null) background = playing.Background;
+
         Bitmap bg = new Bitmap(W, H);
         using (var src = Image.FromFile(background))
         using (var g = Graphics.FromImage(bg))
@@ -1050,66 +1084,84 @@ static class GuidePanel
         // Fade in over 0.25 s, hold, fade out over the last 0.5 s
         Func<double, double, double, double> window = (t, start, end) =>
             t < start || t > end ? 0 : Math.Min(Math.Min(1, (t - start) / 0.25), Math.Min(1, (end - t) / 0.5));
+        // D-pad presses: k-th row, one press every `every` seconds from `from`, up to `max`
+        Func<double, double, double, int, int> presses = (t, from, every, max) => Math.Min(max, (int)Math.Max(0, (t - from) / every + 1));
 
+        // Audio tab with example outputs (the real one lists whatever is plugged in)
         var volume = new List<Item>
         {
             new Item { Text = "Game", Icon = "game", Level = 80, Adjust = d => 0 },
             new Item { Text = "Discord", Icon = "chat", Level = 100, Adjust = d => 0 },
             new Item { Text = "Everything", Icon = "volume", Level = 60, Adjust = d => 0 },
         };
-
-        // Audio tab with example outputs (the real one lists whatever is plugged in)
         var audio = new List<Item>
         {
-            new Item { Text = "CORSAIR VIRTUOSO SE Wireless Gaming Headset", Icon = "headset", Dot = Green },
-            new Item { Text = "Play on LG TV SSCR2", Icon = "tv" },
+            Heading("Sound plays on"),
+            new Item { Text = "CORSAIR VIRTUOSO SE Wireless Gaming Headset", Sub = "Playing here now", Icon = "headset", Dot = Green },
+            new Item { Text = "LG TV SSCR2", Sub = "Switch the sound here", Icon = "tv" },
+            Heading("Volume"),
         };
         audio.AddRange(volume);
-        audio.Add(new Item { Text = "Close", Icon = "close" });
         battery = "Full";
 
-        int frames = (int)(24.5 * Fps);
+        int frames = (int)(30.5 * Fps);
         for (int n = 0; n < frames; n++)
         {
             double t = (double)n / Fps;
             // --- Script ---
-            // 1.0 HUD connected · 4.4 Guide in (Party) · 6.6 RB Audio, volume down · 9.6 RB Lights · 11.4 RB System
-            // 12.8 Guide out · 13.4 Matt calling · 15.6 tap: Answer · 16.9 HUD connected · 19.6 HUD muted
+            // 1.0 HUD connected · 4.3 Guide in (Home, browse games) · 7.6 RB Party, down to Chats
+            // 9.8 A Chats · 11.0 A Matt's chat, down to the messages · 13.4 B, 13.8 B
+            // 14.4 RB Audio, volume down · 17.2 RB Lights · 19.0 RB System · 20.6 Guide out
+            // 21.4 Matt calling · 23.6 tap: Answer · 24.9 HUD connected · 27.6 HUD muted
             DiscordBridge.Running = true;
-            DiscordBridge.Incoming = t >= 13.4 && t < 16.6;
+            DiscordBridge.Incoming = t >= 21.4 && t < 24.6;
             DiscordBridge.IncomingFrom = "Matt";
-            DiscordBridge.InCall = t < 13.2 || t >= 16.6;
-            DiscordBridge.CallName = t < 13.2 ? "General / Charlton Home" : "Matt";
-            DiscordBridge.Muted = t >= 19.6;
+            DiscordBridge.InCall = t < 21.2 || t >= 24.6;
+            DiscordBridge.CallName = t < 21.2 ? "General / Charlton Home" : "Matt";
+            DiscordBridge.Muted = t >= 27.6;
             double panelX = -1;   // fraction shown: 0 hidden .. 1 fully in
-            bool swapped = false;
-            if (t >= 4.4 && t < 13.1) panelX = t < 4.7 ? ease((t - 4.4) / 0.3) : t > 12.8 ? 1 - ease((t - 12.8) / 0.3) : 1;
-            if (t >= 15.6 && t < 16.9) panelX = t < 15.9 ? ease((t - 15.6) / 0.3) : t > 16.6 ? 1 - ease((t - 16.6) / 0.3) : 1;
+            if (t >= 4.3 && t < 20.9) panelX = t < 4.6 ? ease((t - 4.3) / 0.3) : t > 20.6 ? 1 - ease((t - 20.6) / 0.3) : 1;
+            if (t >= 23.6 && t < 24.9) panelX = t < 23.9 ? ease((t - 23.6) / 0.3) : t > 24.6 ? 1 - ease((t - 24.6) / 0.3) : 1;
             if (panelX >= 0)
             {
-                items.Clear(); parents.Clear(); selected = 0;
-                tab = t < 6.6 || t >= 15.6 ? PartyTab : t < 9.6 ? AudioTab : t < 11.4 ? LightsTab : SystemTab;
+                items = new List<Item>(); parents.Clear(); selected = firstVisible = 0; message = "";
+                tab = t < 7.6 ? HomeTab : t < 14.4 || t >= 23.6 ? PartyTab : t < 17.2 ? AudioTab : t < 19.0 ? LightsTab : SystemTab;
                 title = Tabs[tab];
                 if (tab == AudioTab)
                 {
-                    swapped = true; items = audio;
-                    selected = t < 7.2 ? 0 : 2;   // move down to Game
-                    volume[0].Level = t < 7.8 ? 80 : Math.Max(45, 80 - 5 * (int)((t - 7.8) / 0.2));
+                    items = audio;
+                    selected = Nth(presses(t, 14.9, 0.35, 2));   // down to Game
+                    volume[0].Level = t < 15.8 ? 80 : Math.Max(50, 80 - 5 * (int)((t - 15.8) / 0.2));
                 }
                 else
                 {
                     Rebuild();
-                    if (tab == PartyTab && t < 6.6) selected = Math.Min(4, 1 + (int)Math.Max(0, (t - 5.0) / 0.35));
-                    else if (tab == LightsTab) selected = Math.Min(3, (int)Math.Max(0, (t - 10.0) / 0.35));
-                    else if (tab == SystemTab) selected = Math.Min(2, (int)Math.Max(0, (t - 11.8) / 0.35));
-                    else selected = 0;   // incoming: Answer
+                    if (tab == HomeTab) selected = Nth(presses(t, 5.0, 0.4, 5));
+                    else if (tab == LightsTab) selected = Nth(presses(t, 17.6, 0.35, 3));
+                    else if (tab == SystemTab) selected = Nth(presses(t, 19.4, 0.35, 2));
+                    else if (t >= 23.6) selected = 0;   // incoming: Answer
+                    else
+                    {
+                        int chats = items.FindIndex(i => i.Text == "Chats");
+                        selected = t < 9.8 || t >= 13.8 ? (t >= 13.8 ? chats : Nth(presses(t, 8.0, 0.35, 4))) : chats;
+                        if (t >= 9.8 && t < 13.8)
+                        {
+                            parents.Push(new Level { Title = "Party", Items = items, Selected = selected });
+                            title = "Chats"; items = MockChats(); selected = 0;
+                            if (t >= 11.0 && t < 13.4)
+                            {
+                                parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
+                                title = "Matt"; items = MockChat(); selected = Nth(presses(t, 11.6, 0.4, 4));
+                            }
+                        }
+                    }
                 }
             }
-            hudIcon = t < 19.4 ? "people" : "micoff";
-            hudTitle = t < 19.4 ? "Connected" : "Microphone muted";
-            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 19.4 ? "Matt" : "";
-            double hudAlpha = Math.Max(window(t, 1.0, 4.2), Math.Max(window(t, 16.9, 19.4), window(t, 19.6, 22.6)));
-            double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 13.4, 15.6) : 0;
+            hudIcon = t < 27.4 ? "people" : "micoff";
+            hudTitle = t < 27.4 ? "Connected" : "Microphone muted";
+            hudDetail = t < 4.2 ? "General / Charlton Home" : t < 27.4 ? "Matt" : "";
+            double hudAlpha = Math.Max(window(t, 1.0, 4.0), Math.Max(window(t, 24.9, 27.4), window(t, 27.6, 30.2)));
+            double banAlpha = DiscordBridge.Incoming && panelX < 0 ? window(t, 21.4, 23.6) : 0;
             // --- Compose ---
             using (var frame = new Bitmap(W, H))
             using (var g = Graphics.FromImage(frame))
@@ -1125,9 +1177,9 @@ static class GuidePanel
                 }
                 frame.Save(System.IO.Path.Combine(folder, string.Format("f{0:D4}.png", n)), System.Drawing.Imaging.ImageFormat.Png);
             }
-            if (swapped) items = new List<Item>();
         }
         bg.Dispose();
+        PlayniteLink.Pretend = null;
     }
 
     // Draws one of the windows (panel, banner, HUD) onto a frame: rounded, at an opacity

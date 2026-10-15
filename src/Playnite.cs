@@ -34,11 +34,14 @@ static class PlayniteLink
         catch { return new List<Game>(); }
     }
 
-    public static bool Running { get { return File.Exists(GamePath); } }
+    // --demo: a game to show as running
+    public static string Pretend;
+
+    public static bool Running { get { return Pretend != null || File.Exists(GamePath); } }
 
     public static string NowPlaying
     {
-        get { try { return Running && File.Exists(NamePath) ? File.ReadAllText(NamePath).Trim() : ""; } catch { return ""; } }
+        get { if (Pretend != null) return Pretend; try { return Running && File.Exists(NamePath) ? File.ReadAllText(NamePath).Trim() : ""; } catch { return ""; } }
     }
 
     public static Game Current

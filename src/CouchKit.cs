@@ -523,12 +523,12 @@ static class CouchKit
 
     static void Main(string[] args)
     {
-        if (args.Length > 2 && args[0] == "--demo")   // demo video frames: --demo <folder> <background image>
+        if (args.Length > 1 && args[0] == "--demo")   // demo video frames: --demo <folder> [background image]
         {
             string note;
             var ds = Settings.Load(out note);
             SmartHome.Start(ds.SmartHome, ds.Lighting);
-            GuidePanel.Demo(ds.Discord, args[1], args[2]);
+            GuidePanel.Demo(ds.Discord, args[1], args.Length > 2 ? args[2] : null);
             return;
         }
         if (args.Length > 1 && args[0] == "--preview")   // design check: the Guide, banner and HUD as PNGs
