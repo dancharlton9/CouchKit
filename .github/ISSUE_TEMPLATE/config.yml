@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Suggest a feature
+    url: https://github.com/dancharlton9/CouchKit/discussions/categories/ideas
+    about: Ideas go in Discussions, where others can vote on them.
+  - name: See what's planned
+    url: https://github.com/dancharlton9/CouchKit/issues?q=is%3Aopen+label%3Aroadmap
+    about: The roadmap. 👍 the features you'd use.

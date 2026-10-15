@@ -129,6 +129,8 @@
   .heart { font-size: 92px; line-height: 1; text-align: center; }
   .heart span { display: block; font-size: 15px; color: var(--dim); margin-top: 12px; }
 
+  .next .feature { color: var(--text); transition: transform .15s, background .15s; }
+  .next .feature:hover { text-decoration: none; transform: translateY(-2px); background: var(--card2); }
   footer { padding: 40px 0 60px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); }
   footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
 
@@ -158,6 +160,7 @@
       <a href="#guide">The Guide</a>
       <a href="#features">Features</a>
       <a href="#install">Install</a>
+      <a href="#next">Roadmap</a>
       <a href="https://github.com/dancharlton9/CouchKit">GitHub</a>
       <a class="btn kofi" href="https://ko-fi.com/fiisaac">♥ Support</a>
     </div>
@@ -257,6 +260,25 @@
       <div class="step"><h3>Grab the controller</h3><p>Switch Playnite to fullscreen mode and double-tap the Xbox button. <strong>System → CouchKit status</strong> shows what's working.</p></div>
     </div>
     <p class="reqs"><strong>Needs</strong> Windows 10 or 11 and Playnite 10, used in fullscreen mode. <strong>Optional:</strong> an Xbox (or translated) controller · OpenRGB for lighting · Discord · PlayniteAchievements and HowLongToBeat add-ons · Home Assistant or Nanoleaf · FanControl for CPU temperature · Sunshine, Apollo or Moonlight for streaming.</p>
+  </div>
+</section>
+
+<section id="next" class="alt">
+  <div class="wrap">
+    <h2>What's <span class="grad-text">next.</span></h2>
+    <p class="sub">Here's what's planned. Give a 👍 to the ones you'd use, because that decides what comes first. Got an idea that isn't here? Suggest it.</p>
+    <div class="grid next">
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/1"><h3>Clip recording</h3><p>Record the last 30 seconds from the Guide, using your graphics card's instant replay.</p></a>
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/2"><h3>Native PlayStation &amp; Switch pads</h3><p>DualSense and Switch Pro controllers without Steam Input or DS4Windows.</p></a>
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/4"><h3>Quick Resume</h3><p>Suspend a game from the Guide and pick it up later.</p></a>
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/5"><h3>Media controls</h3><p>Spotify and anything else playing, from the controller.</p></a>
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/3"><h3>Update notifications</h3><p>“Update available” in the Guide when a new version is out.</p></a>
+      <a class="feature" href="https://github.com/dancharlton9/CouchKit/issues/7"><h3>Other languages</h3><p>The Guide in your language, and Discord in languages other than English.</p></a>
+    </div>
+    <div class="ctas" style="justify-content:flex-start;margin-top:28px">
+      <a class="btn" href="https://github.com/dancharlton9/CouchKit/issues?q=is%3Aopen+label%3Aroadmap">See the full roadmap</a>
+      <a class="btn" href="https://github.com/dancharlton9/CouchKit/discussions/categories/ideas">Suggest an idea</a>
+    </div>
   </div>
 </section>
 

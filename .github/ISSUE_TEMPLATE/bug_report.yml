@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in CouchKit isn't working as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CouchKit version
+      description: In the Guide, System → CouchKit status shows it at the bottom.
+      placeholder: "1.13.0"
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: CouchKit status
+      description: What does System → CouchKit status in the Guide say? A photo of the TV is fine.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Windows version, Playnite version, controller, and anything relevant (OpenRGB, Discord, streaming with Sunshine/Apollo…).
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of %APPDATA%\CouchKit\CouchKit.log (Playnite → Add-ons → Extension settings → CouchKit → Open log). Remove anything private first.
+      render: text

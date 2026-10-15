@@ -221,6 +221,10 @@ Run `build.cmd`. It uses the C# compiler that comes with Windows (.NET Framework
 
 The add-on is compiled against `Playnite.SDK.dll` from your Playnite install. If Playnite isn't in `%LOCALAPPDATA%\Playnite`, run `build.cmd -PlayniteDir "<folder>"`. The version number comes from the `VERSION` file.
 
+## What's next
+
+Planned features are on the [roadmap](https://github.com/dancharlton9/CouchKit/issues?q=is%3Aopen+label%3Aroadmap): clip recording, native PlayStation and Switch controllers, Quick Resume, media controls, update notifications, settings in the Guide, other languages, and friends' activity. 👍 the ones you'd use. New ideas go in [Discussions](https://github.com/dancharlton9/CouchKit/discussions/categories/ideas).
+
 ## Support
 
 CouchKit is free and MIT-licensed. If it makes your sofa a better place, you can [buy me a coffee on Ko-fi](https://ko-fi.com/fiisaac). Ideas and bug reports are welcome in [Issues](https://github.com/dancharlton9/CouchKit/issues).
