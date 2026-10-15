@@ -584,6 +584,12 @@ static class CouchKit
             }
             DiscordBridge.Start(S.Discord);
             GuidePanel.Start(S.Discord);
+            if (S.Achievements.Enabled && Achievements.Available)
+            {
+                GuidePanel.AchievementPopups = S.Achievements.Popups;
+                Achievements.Watch(GuidePanel.Unlocked);
+            }
+            Achievements.Enabled = S.Achievements.Enabled;
             SmartHome.Log = Log;
             SmartHome.Start(S.SmartHome, S.Lighting);
 

@@ -49,6 +49,10 @@
     "LightScenes": [],
     "RoomLights": []
   },
+  "Achievements": {
+    "Enabled": true,
+    "Popups": true
+  },
   "Discord": {
     "Enabled": true,
     "Favourites": [],

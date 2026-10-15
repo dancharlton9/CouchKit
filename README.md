@@ -38,7 +38,15 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - **Lights:** Home Assistant scenes, room lights on/off, and PC lighting on/off.
 - **System:** turn the screen off, restart Playnite, restart or shut down the PC (each asks first).
 
-The footer shows the controller's battery, and a warning pops up when it runs low.
+The footer shows the controller's battery as a percentage, and a warning pops up when it runs low.
+
+**Achievements** (optional, needs the [PlayniteAchievements](https://playnite.link/addons.html) add-on)
+- The now-playing card shows the game's achievement progress, for example 2 / 54.
+- **Achievements** on Home lists the running game's achievements: unlocked ones with when, gamerscore and rarity, then locked ones with their descriptions and progress bars. Secret ones stay hidden.
+- **Recent achievements** lists your latest unlocks across every game.
+- When you unlock one, a large pop-up on the TV shows its icon, name, gamerscore and rarity, and the controller buzzes.
+- CouchKit reads the add-on's database read-only, using the SQLite built into Windows. Unlocks appear as soon as the add-on notices them; while a game runs it checks every 15 seconds by default (`InGamePollIntervalSeconds` in its settings).
+- To avoid two pop-ups, turn off the add-on's own unlock toasts in its settings and keep its unlock sound. Steam and the Xbox Game Bar also show their own; turn those off in their settings if you want only CouchKit's.
 
 **Party: Discord from the controller** (optional)
 
@@ -135,6 +143,7 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Audio.HeadsetDeviceName` | empty (off) | Part of a headset's name, for example `VIRTUOSO`. While it's connected, it becomes the default speaker and microphone instead of the TV |
 | `Discord.Enabled` | `true` | The Guide's Party tab and Discord controls |
 | `Discord.Favourites` | none | Party tab entries. A friend: `{"Label": "My brother", "Friend": "their name as shown in Discord's DM list"}`. A voice channel: `{"Label": "Gaming", "Server": "Server name", "Channel": "General"}`. Friends must have a recent DM, so they appear in Discord's direct messages list |
+| `Achievements.Enabled` / `Popups` | `true` / `true` | Achievements in the Guide, and the TV pop-up when one unlocks |
 | `Discord.QuickReplies` | five short replies | The messages offered under **Quick reply** on a chat's page |
 | `Games.EmulatorFolders` | none | Folders your emulators run from. Emulated games don't run from their "install folder", so this is how CouchKit finds them |
 | `Games.ProtectedProcesses` | none | Extra programs never treated as the game, for example `["MyLauncher"]` |

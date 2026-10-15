@@ -13,6 +13,7 @@ class Settings
     public LightingSettings Lighting { get; set; }
     public SmartHomeSettings SmartHome { get; set; }
     public DiscordSettings Discord { get; set; }
+    public AchievementSettings Achievements { get; set; }
 
     public Settings()
     {
@@ -23,6 +24,7 @@ class Settings
         Lighting = new LightingSettings();
         SmartHome = new SmartHomeSettings();
         Discord = new DiscordSettings();
+        Achievements = new AchievementSettings();
     }
 
     // Settings, log and the running-game files the Playnite add-on writes all live here, outside
@@ -52,6 +54,7 @@ class Settings
             if (s.Lighting == null) s.Lighting = new LightingSettings();
             if (s.SmartHome == null) s.SmartHome = new SmartHomeSettings();
             if (s.Discord == null) s.Discord = new DiscordSettings();
+            if (s.Achievements == null) s.Achievements = new AchievementSettings();
             if (s.Discord.Favourites == null) s.Discord.Favourites = new DiscordFavourite[0];
             if (s.Discord.QuickReplies == null || s.Discord.QuickReplies.Length == 0) s.Discord.QuickReplies = new DiscordSettings().QuickReplies;
             note = "settings from " + FilePath;
@@ -176,4 +179,12 @@ class DiscordFavourite
     public string Friend { get; set; }
     public string Server { get; set; }
     public string Channel { get; set; }
+}
+
+// Achievements from the PlayniteAchievements add-on, shown in the Guide
+class AchievementSettings
+{
+    public bool Enabled { get; set; }   // Home tab progress, achievement pages, recent unlocks
+    public bool Popups { get; set; }    // the TV pop-up when one unlocks
+    public AchievementSettings() { Enabled = true; Popups = true; }
 }

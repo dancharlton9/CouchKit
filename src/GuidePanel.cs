@@ -33,6 +33,11 @@ static class GuidePanel
         public bool CloseAfter, Direct, Quiet;   // Quiet: information row (e.g. a message)
         public PlayniteLink.Game Game;   // Home tab: the game this row starts (its cover is shown)
         public Func<List<Item>> Submenu;
+        public bool Local;           // Submenu loads from local data, not Discord: don't queue behind Discord
+        public string Image;         // picture in place of the icon (an achievement's icon)
+        public bool Faded;           // Image shown grey and dim (a locked achievement)
+        public double Progress = -1; // 0..1 shows a progress bar under the second line
+        public string ProgressText = "";
         public Color? Dot;
         public Func<int, int> Adjust;
         public int Level = -2;   // volume: -2 not a volume item, -1 nothing to control, else percent
@@ -67,7 +72,7 @@ static class GuidePanel
         { "power", "" }, { "game", "" }, { "server", "" }, { "star", "" },
         { "tv", "\uE7F4" }, { "bulb", "\uEA80" }, { "bulboff", "\uE708" }, { "camera", "\uE722" }, { "refresh", "\uE72C" },
         { "closegame", "\uE7FC" }, { "battery", "\uE83F" }, { "batterylow", "\uE850" }, { "wired", "\uE839" },
-        { "settings", "\uE713" }, { "chevron", "\uE76C" }, { "up", "\uE70E" }, { "down", "\uE70D" }, { "info", "\uE946" }, { "voice", "\uE902" },
+        { "settings", "\uE713" }, { "chevron", "\uE76C" }, { "up", "\uE70E" }, { "down", "\uE70D" }, { "info", "\uE946" }, { "trophy", "\uE734" }, { "recent", "\uE81C" }, { "voice", "\uE902" },
         { "send", "\uE724" }, { "quote", "\uE8BD" }, { "home", "\uE80F" }, { "library", "\uE8F1" }, { "play", "\uE768" }, { "swap", "\uE8AB" },
     };
     static string iconFont = "Segoe MDL2 Assets";
@@ -195,7 +200,7 @@ static class GuidePanel
         panel.Invalidate();
         var loader = item.Submenu;
         var level = items;
-        DiscordBridge.Do(() =>
+        Func<string> load = () =>
         {
             var loaded = loader();
             OnUi(() =>
@@ -206,7 +211,9 @@ static class GuidePanel
                 panel.Invalidate();
             });
             return "";
-        }, null);
+        };
+        if (item.Local) ThreadPool.QueueUserWorkItem(_ => { try { load(); } catch (Exception ex) { CouchKit.Log("Guide: " + ex.Message); } });
+        else DiscordBridge.Do(load, null);
     }
 
     public static void Select()
@@ -355,6 +362,18 @@ static class GuidePanel
             return "";
         } });
         if (current.Length > 0) list.Add(new Item { Text = "Close game", Sub = "Quits " + current, Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
+        if (Achievements.Available)
+        {
+            var playing = PlayniteLink.Current;
+            var sum = playing != null ? Achievements.ForGame(playing.Id) : null;
+            if (sum != null)
+            {
+                string id = playing.Id;
+                list.Add(new Item { Text = "Achievements", Sub = sum.Unlocked + " of " + sum.Total + " unlocked", Icon = "trophy", Local = true,
+                                    Progress = (double)sum.Unlocked / sum.Total, Submenu = () => AchievementsMenu(id) });
+            }
+            list.Add(new Item { Text = "Recent achievements", Sub = "Your latest unlocks, in every game", Icon = "recent", Local = true, Submenu = RecentAchievementsMenu });
+        }
         var recent = PlayniteLink.Recent().Where(r => r.Name != current).Take(8).ToList();
         if (recent.Count > 0) list.Add(Heading(current.Length > 0 ? "Switch to" : "Jump back in"));
         foreach (var gm in recent)
@@ -368,6 +387,37 @@ static class GuidePanel
         }
         list.Add(new Item { Text = "Playnite library", Sub = "Everything else", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
     }
+
+    // --- Achievements (from the PlayniteAchievements add-on) ---
+    static List<Item> AchievementsMenu(string gameId)
+    {
+        var all = Achievements.ForGameList(gameId);
+        var list = new List<Item>();
+        var unlocked = all.Where(a => a.Unlocked).ToList();
+        var locked = all.Where(a => !a.Unlocked).ToList();
+        if (unlocked.Count > 0) list.Add(Heading("Unlocked  ·  " + unlocked.Count + " of " + all.Count));
+        foreach (var a in unlocked)
+            list.Add(new Item { Text = a.Name, Sub = Join(Achievements.When(a.UnlockTime), a.Points > 0 ? a.Points + "G" : "", Achievements.RarityText(a)), Image = a.Icon, Quiet = true });
+        if (locked.Count > 0) list.Add(Heading("Locked  ·  " + locked.Count));
+        foreach (var a in locked)
+        {
+            if (a.Hidden) { list.Add(new Item { Text = "Secret achievement", Sub = "Keep playing to reveal it", Image = a.Icon, Faded = true, Quiet = true }); continue; }
+            var row = new Item { Text = a.Name, Sub = a.Description.Length > 0 ? a.Description : Achievements.RarityText(a), Image = a.Icon, Faded = true, Quiet = true };
+            if (a.ProgressDenom > 1) { row.Progress = Achievements.Fraction(a); row.ProgressText = a.ProgressNum + " / " + a.ProgressDenom; }
+            list.Add(row);
+        }
+        return list;
+    }
+
+    static List<Item> RecentAchievementsMenu()
+    {
+        return Achievements.Recent(20).Select(a => new Item
+        {
+            Text = a.Name, Sub = Join(a.Game, Achievements.When(a.UnlockTime), a.Points > 0 ? a.Points + "G" : ""), Image = a.Icon, Quiet = true,
+        }).ToList();
+    }
+
+    static string Join(params string[] parts) { return string.Join("  ·  ", parts.Where(x => !string.IsNullOrEmpty(x)).ToArray()); }
 
     // --- System tab ---
     static void SystemItems(List<Item> list)
@@ -542,14 +592,47 @@ static class GuidePanel
 
     static string hudIcon = "", hudTitle = "", hudDetail = "";
     static System.Windows.Forms.Timer hudTimer;
+    static Achievements.Achievement hudAchievement;   // set while the HUD shows an achievement
+    static readonly Queue<Achievements.Achievement> unlockQueue = new Queue<Achievements.Achievement>();
+    public static bool AchievementPopups = true;
+
+    // Achievement unlocked: a bigger pop-up with the achievement's icon, one at a time
+    public static void Unlocked(Achievements.Achievement a)
+    {
+        if (!AchievementPopups) return;
+        OnUi(() =>
+        {
+            if (hudAchievement != null && hud.Visible) { unlockQueue.Enqueue(a); return; }
+            ShowAchievement(a);
+        });
+    }
+
+    static void ShowAchievement(Achievements.Achievement a)
+    {
+        if (IsOpen) return;
+        Picture(a.Icon);   // load before showing
+        for (int p = 0; p < 4; p++) CouchKit.Rumble(p, 90);
+        hudAchievement = a;
+        hudTitle = a.Name;
+        hudDetail = Join(a.Points > 0 ? a.Points + "G" : "", Achievements.RarityText(a));
+        Rectangle tv = CouchKit.TvBounds();
+        int w = tv.Width * 30 / 100, h = tv.Height * 10 / 100;
+        ShowHudWindow(tv, w, h, 120);   // ~6 s
+    }
 
     // Corner HUD: a short message top-right for a few seconds, then fades
     static void ShowHud(string icon, string t, string detail)
     {
         if (IsOpen) return;   // the panel already shows it
+        if (hudAchievement != null && hud.Visible) return;   // don't cut an achievement short
+        hudAchievement = null;
         hudIcon = icon; hudTitle = t; hudDetail = detail ?? "";
         Rectangle tv = CouchKit.TvBounds();
-        int w = tv.Width * 24 / 100, h = tv.Height * 8 / 100;
+        ShowHudWindow(tv, tv.Width * 24 / 100, tv.Height * 8 / 100, 70);
+    }
+
+    static void ShowHudWindow(Rectangle tv, int w, int h, int holdTicks)
+    {
         hud.Bounds = new Rectangle(tv.Right - w - tv.Width * 2 / 100, tv.Top + tv.Height * 3 / 100, w, h);
         hud.Region = Rounded(new Rectangle(0, 0, w, h), h / 4);
         hud.Opacity = 0.97;
@@ -561,8 +644,13 @@ static class GuidePanel
         hudTimer.Tick += (s, e) =>
         {
             ticks++;
-            if (ticks > 70) hud.Opacity = Math.Max(0, hud.Opacity - 0.1);   // hold ~3.5 s, then fade
-            if (hud.Opacity <= 0.05) { hud.Hide(); hudTimer.Stop(); }
+            if (ticks > holdTicks) hud.Opacity = Math.Max(0, hud.Opacity - 0.1);   // hold, then fade
+            if (hud.Opacity <= 0.05)
+            {
+                hud.Hide(); hudTimer.Stop();
+                if (unlockQueue.Count > 0) ShowAchievement(unlockQueue.Dequeue());
+                else hudAchievement = null;
+            }
         };
         hudTimer.Start();
     }
@@ -639,35 +727,52 @@ static class GuidePanel
 
     // Game covers, loaded once and kept small
     static readonly Dictionary<string, Image> covers = new Dictionary<string, Image>();
-    static Image Cover(PlayniteLink.Game game)
+    static Image Cover(PlayniteLink.Game game) { return game == null ? null : Picture(game.Cover); }
+
+    static Image Picture(string path)
     {
-        if (game == null || string.IsNullOrEmpty(game.Cover)) return null;
+        if (string.IsNullOrEmpty(path)) return null;
         Image img;
-        if (covers.TryGetValue(game.Cover, out img)) return img;
+        lock (covers) if (covers.TryGetValue(path, out img)) return img;
         try
         {
-            using (var src = Image.FromFile(game.Cover))
+            using (var src = Image.FromFile(path))
             {
-                int h = 360, w = Math.Max(1, src.Width * h / Math.Max(1, src.Height));
+                int h = Math.Min(360, src.Height), w = Math.Max(1, src.Width * h / Math.Max(1, src.Height));
                 var small = new Bitmap(w, h);
                 using (var g = Graphics.FromImage(small)) { g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(src, 0, 0, w, h); }
                 img = small;
             }
         }
-        catch (Exception ex) { CouchKit.Log("Guide: cover " + game.Name + ": " + ex.Message); img = null; }
-        covers[game.Cover] = img;
+        catch (Exception ex) { CouchKit.Log("Guide: picture " + System.IO.Path.GetFileName(path) + ": " + ex.Message); img = null; }
+        lock (covers) covers[path] = img;
         return img;
     }
 
     // Cover art cropped to a 3:4 tile with rounded corners
-    static void DrawCover(Graphics g, Image img, RectangleF r, float radius)
+    static void DrawCover(Graphics g, Image img, RectangleF r, float radius, bool faded = false)
     {
         var state = g.Save();
         using (var path = RoundedPath(r, radius)) g.SetClip(path, CombineMode.Intersect);
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         float scale = Math.Max(r.Width / img.Width, r.Height / img.Height);
         float w = img.Width * scale, h = img.Height * scale;
-        g.DrawImage(img, r.Left + (r.Width - w) / 2, r.Top + (r.Height - h) / 2, w, h);
+        var dest = new RectangleF(r.Left + (r.Width - w) / 2, r.Top + (r.Height - h) / 2, w, h);
+        if (!faded) g.DrawImage(img, dest);
+        else
+        {
+            // Locked: greyscale at 40%
+            var m = new System.Drawing.Imaging.ColorMatrix(new[]
+            {
+                new[] { 0.3f, 0.3f, 0.3f, 0, 0 }, new[] { 0.59f, 0.59f, 0.59f, 0, 0 }, new[] { 0.11f, 0.11f, 0.11f, 0, 0 },
+                new[] { 0f, 0, 0, 0.4f, 0 }, new[] { 0f, 0, 0, 0, 1 },
+            });
+            using (var attrs = new System.Drawing.Imaging.ImageAttributes())
+            {
+                attrs.SetColorMatrix(m);
+                g.DrawImage(img, Rectangle.Round(dest), 0, 0, img.Width, img.Height, GraphicsUnit.Pixel, attrs);
+            }
+        }
         g.Restore(state);
     }
 
@@ -679,6 +784,8 @@ static class GuidePanel
     {
         if (item.Header) return (int)(unit * 1.7f);
         if (item.Game != null) return (int)(unit * 3.3f);
+        if (item.Image != null) return (int)(unit * (item.Progress >= 0 ? 3.3f : 2.9f));
+        if (item.Progress >= 0) return (int)(unit * 3.2f);
         if (item.Wrap && item.Sub.Length > 0)
         {
             int h = TextRenderer.MeasureText(item.Sub, small, new Size(width, 10000), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height;
@@ -745,7 +852,8 @@ static class GuidePanel
                 bool home = tab == HomeTab, playing = PlayniteLink.Running;
                 var currentGame = home && playing ? PlayniteLink.Current : null;
                 var cover = Cover(currentGame);
-                var card = new RectangleF(x - unit / 2, y, w + unit, unit * 3.6f);
+                var achieved = currentGame != null ? Achievements.ForGame(currentGame.Id) : null;
+                var card = new RectangleF(x - unit / 2, y, w + unit, unit * (achieved != null ? 4.4f : 3.6f));
                 using (var path = RoundedPath(card, unit * 0.6f))
                 {
                     using (var fill = new SolidBrush(!home && DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
@@ -779,6 +887,21 @@ static class GuidePanel
                 Line(g, over, heading, Aqua, new RectangleF(cx, card.Top + unit * 0.45f, cw, heading.Height * 1.3f));
                 Line(g, line1, bold, Text, new RectangleF(cx, card.Top + unit * 1.15f, cw, bold.Height * 1.25f));
                 Line(g, line2, small, !home && DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(cx, card.Top + unit * 2.45f, cw, small.Height * 1.25f));
+                if (achieved != null)
+                {
+                    // Achievements: trophy, bar, "2 / 54"
+                    string count = achieved.Unlocked + " / " + achieved.Total;
+                    int countW = TextRenderer.MeasureText(count, small).Width;
+                    float by = card.Top + unit * 3.55f, bh = unit * 0.26f, bx = cx + unit * 1.0f, bw = cw - unit * 1.0f - countW - unit * 0.5f;
+                    using (var tb = new LinearGradientBrush(new RectangleF(cx, by - unit, unit, unit * 2), Aqua, Magenta, 45f)) DrawIcon(g, "trophy", cx, by + bh / 2 - unit * 0.36f, unit * 0.72f, tb);
+                    using (var track = new SolidBrush(Color.FromArgb(50, 255, 255, 255)))
+                    using (var tp = RoundedPath(new RectangleF(bx, by, bw, bh), bh / 2)) g.FillPath(track, tp);
+                    float fill = bw * achieved.Unlocked / Math.Max(1, achieved.Total);
+                    if (fill >= bh)
+                        using (var lvl = new LinearGradientBrush(new RectangleF(bx - 1, by, bw + 2, bh), Aqua, Magenta, LinearGradientMode.Horizontal))
+                        using (var lp = RoundedPath(new RectangleF(bx, by, fill, bh), bh / 2)) g.FillPath(lvl, lp);
+                    Line(g, count, small, Dim, new RectangleF(bx + bw + unit * 0.5f, TextTop(small, count, by + bh / 2), countW + 4, small.Height * 1.3f));
+                }
                 y += (int)(card.Height + unit * 0.7f);
             }
 
@@ -817,11 +940,20 @@ static class GuidePanel
                 }
                 int textX = x + unit / 2;
                 var cover = Cover(item.Game);
+                var picture = Picture(item.Image);
                 if (cover != null)
                 {
                     float ch = rowH - unit * 0.6f;
                     DrawCover(g, cover, new RectangleF(textX, y + unit * 0.3f, ch * 0.75f, ch), unit * 0.25f);
                     textX += (int)(ch * 0.75f + unit * 0.7f);
+                }
+                else if (item.Image != null)
+                {
+                    float side = unit * 2.1f;
+                    var tile = new RectangleF(textX, y + (rowH - side) / 2, side, side);
+                    if (picture != null) DrawCover(g, picture, tile, unit * 0.3f, item.Faded);
+                    else using (var ph = RoundedPath(tile, unit * 0.3f)) using (var pb = new SolidBrush(CardLight)) g.FillPath(pb, ph);
+                    textX += (int)(side + unit * 0.7f);
                 }
                 else if (item.Icon != null)
                 {
@@ -878,7 +1010,7 @@ static class GuidePanel
                     int nameW = Math.Min(TextRenderer.MeasureText(g, item.Text, sel ? bold : body, new Size(10000, 1000), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width, nameRight - textX);
                     using (var dot = new SolidBrush(item.Dot.Value)) g.FillEllipse(dot, textX + nameW + unit * 0.35f, ty + body.Height * 0.6f - d / 2, d, d);
                 }
-                Color main = item.Quiet ? Dim : sel ? Text : Color.FromArgb(205, 205, 222);
+                Color main = item.Quiet && item.Image == null ? Dim : sel ? Text : Color.FromArgb(205, 205, 222);   // achievements are information too, but read as titles
                 if (item.Wrap)
                 {
                     Line(g, item.Text, heading, Aqua, new RectangleF(textX, y + unit * 0.5f, textRight - textX, heading.Height * 1.3f));
@@ -888,8 +1020,23 @@ static class GuidePanel
                 }
                 else if (item.Sub.Length > 0)
                 {
-                    Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + rowH / 2f - body.Height * 0.95f, nameRight - textX, body.Height * 1.3f));
-                    Line(g, item.Sub, small, Dim, new RectangleF(textX, y + rowH / 2f + unit * 0.12f, textRight - textX, small.Height * 1.3f));
+                    float lift = item.Progress >= 0 ? unit * 0.4f : 0;
+                    Line(g, item.Text, sel ? bold : body, item.Faded && !sel ? Dim : main, new RectangleF(textX, y + rowH / 2f - body.Height * 0.95f - lift, nameRight - textX, body.Height * 1.3f));
+                    Line(g, item.Sub, small, Dim, new RectangleF(textX, y + rowH / 2f + unit * 0.12f - lift, textRight - textX, small.Height * 1.3f));
+                    if (item.Progress >= 0)
+                    {
+                        // Progress: a thin gradient bar, with "8 / 10" after it if there's a count
+                        float barY = y + rowH / 2f + unit * 0.12f - lift + small.Height * 1.25f + unit * 0.12f, barH = unit * 0.24f;
+                        int labelW = item.ProgressText.Length > 0 ? TextRenderer.MeasureText(item.ProgressText, small).Width + unit / 2 : 0;
+                        float barW = Math.Min((textRight - textX) * 0.7f, textRight - textX - labelW);
+                        using (var track = new SolidBrush(Color.FromArgb(50, 255, 255, 255)))
+                        using (var tp = RoundedPath(new RectangleF(textX, barY, barW, barH), barH / 2)) g.FillPath(track, tp);
+                        float fill = (float)(barW * Math.Max(0, Math.Min(1, item.Progress)));
+                        if (fill >= barH)
+                            using (var lvl = new LinearGradientBrush(new RectangleF(textX - 1, barY, barW + 2, barH), Aqua, Magenta, LinearGradientMode.Horizontal))
+                            using (var lp = RoundedPath(new RectangleF(textX, barY, fill, barH), barH / 2)) g.FillPath(lvl, lp);
+                        if (labelW > 0) Line(g, item.ProgressText, small, Dim, new RectangleF(textX + barW + unit / 2, TextTop(small, item.ProgressText, barY + barH / 2), labelW + 4, small.Height * 1.3f));
+                    }
                 }
                 else Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + (rowH - body.Height) / 2, nameRight - textX, body.Height * 1.3f));
                 y += rowH + gap;
@@ -976,7 +1123,25 @@ static class GuidePanel
         using (var text = new SolidBrush(Text))
         using (var dim = new SolidBrush(Dim))
         {
-            var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+            if (hudAchievement != null)
+            {
+                // Achievement: its icon, "ACHIEVEMENT UNLOCKED", the name, points and rarity
+                float side = size.Height - unit * 1.3f;
+                var tile = new RectangleF(unit * 0.65f, (size.Height - side) / 2, side, side);
+                var pic = Picture(hudAchievement.Icon);
+                if (pic != null) DrawCover(g, pic, tile, unit * 0.35f);
+                else using (var tb = new LinearGradientBrush(tile, Aqua, Magenta, 45f)) DrawIcon(g, "trophy", tile.Left + side * 0.2f, tile.Top + side * 0.2f, side * 0.6f, tb);
+                float ax = tile.Right + unit * 0.7f, aw = size.Width - ax - unit * 0.7f;
+                using (var over = new Font("Segoe UI Semibold", unit * 0.62f, GraphicsUnit.Pixel))
+                using (var name = new Font("Segoe UI Semibold", unit * 0.95f, GraphicsUnit.Pixel))
+                using (var detail = new Font("Segoe UI", unit * 0.66f, GraphicsUnit.Pixel))
+                {
+                    Line(g, "ACHIEVEMENT UNLOCKED", over, Aqua, new RectangleF(ax, TextTop(over, "A", size.Height * 0.25f), aw, over.Height * 1.3f));
+                    Line(g, hudTitle, name, Text, new RectangleF(ax, TextTop(name, hudTitle, size.Height * 0.5f), aw, name.Height * 1.3f));
+                    Line(g, hudDetail, detail, Dim, new RectangleF(ax, TextTop(detail, hudDetail, size.Height * 0.75f), aw, detail.Height * 1.3f));
+                }
+                return;
+            }
             Brush iconBrush = hudIcon == "micoff" || hudIcon == "hangup" || hudIcon == "deafened" ? (Brush)new SolidBrush(Red) : new LinearGradientBrush(new Rectangle(0, 0, unit * 3, unit * 3), Aqua, Magenta, 45f);
             DrawIcon(g, hudIcon, unit * 0.9f, (size.Height - unit * 1.9f) / 2, unit * 1.9f, iconBrush);
             iconBrush.Dispose();
@@ -1035,6 +1200,27 @@ static class GuidePanel
         title = "Matt"; items = MockChat(); selected = 3;
         render("panel-chat.png", 1305, 2160, PaintPanel);
         parents.Clear();
+        // Achievements, from the real database
+        var withAch = PlayniteLink.Recent().FirstOrDefault(gm => Achievements.ForGame(gm.Id) != null);
+        if (withAch != null)
+        {
+            tab = HomeTab; parents.Push(new Level { Title = "Home", Items = new List<Item>(), Selected = 0 });
+            title = "Achievements"; items = AchievementsMenu(withAch.Id); selected = Selectable(0);
+            render("panel-achievements.png", 1305, 2160, PaintPanel);
+            title = "Recent achievements"; items = RecentAchievementsMenu(); selected = 0;
+            render("panel-recent-achievements.png", 1305, 2160, PaintPanel);
+            parents.Clear();
+            var latest = Achievements.Recent(1).FirstOrDefault();
+            if (latest != null)
+            {
+                hudAchievement = latest; hudTitle = latest.Name; hudDetail = Join(latest.Points > 0 ? latest.Points + "G" : "", Achievements.RarityText(latest));
+                render("hud-achievement.png", 1152, 216, PaintHud);
+                hudAchievement = null;
+            }
+            PlayniteLink.Pretend = withAch.Name; items = new List<Item>(); Rebuild(); selected = Selectable(0);
+            render("panel-home-playing.png", 1305, 2160, PaintPanel);
+            PlayniteLink.Pretend = null;
+        }
     }
 
     // Made-up chats and messages for the preview and demo (never real ones)
