@@ -72,16 +72,19 @@ static class GuidePanel
         { "power", "" }, { "game", "" }, { "server", "" }, { "star", "" },
         { "tv", "\uE7F4" }, { "bulb", "\uEA80" }, { "bulboff", "\uE708" }, { "camera", "\uE722" }, { "refresh", "\uE72C" },
         { "closegame", "\uE7FC" }, { "battery", "\uE83F" }, { "batterylow", "\uE850" }, { "wired", "\uE839" },
-        { "settings", "\uE713" }, { "chevron", "\uE76C" }, { "up", "\uE70E" }, { "down", "\uE70D" }, { "info", "\uE946" }, { "trophy", "\uE734" }, { "recent", "\uE81C" }, { "voice", "\uE902" },
+        { "settings", "\uE713" }, { "chevron", "\uE76C" }, { "up", "\uE70E" }, { "down", "\uE70D" }, { "info", "\uE946" }, { "trophy", "\uE734" }, { "recent", "\uE81C" }, { "voice", "\uE902" }, { "bell", "\uEA8F" }, { "drive", "\uEDA2" }, { "pc", "\uE977" },
         { "send", "\uE724" }, { "quote", "\uE8BD" }, { "home", "\uE80F" }, { "library", "\uE8F1" }, { "play", "\uE768" }, { "swap", "\uE8AB" },
     };
     static string iconFont = "Segoe MDL2 Assets";
 
+    public static bool Animations = true;   // Guide.Animations in couchkit.json
+
+    // Starts the Guide. Discord is optional: without it there's no Party tab.
     public static void Start(DiscordSettings settings)
     {
         S = settings;
-        if (!S.Enabled) return;
-        DiscordBridge.Notify = (icon, t, d) => OnUi(() => ShowHud(icon, t, d));
+        if (S.Enabled) DiscordBridge.Notify = (icon, t, d) => OnUi(() => ShowHud(icon, t, d));
+        Pc.Start();
         var th = new Thread(() =>
         {
             using (var fonts = new InstalledFontCollection())
@@ -98,6 +101,8 @@ static class GuidePanel
             var timer = new System.Windows.Forms.Timer { Interval = 500 };
             timer.Tick += (s, e) => Tick();
             timer.Start();
+            animTimer = new System.Windows.Forms.Timer { Interval = 15 };
+            animTimer.Tick += (s, e) => { if (animating && panel.Visible) panel.Invalidate(); else animTimer.Stop(); };
             Application.Run();
         }) { IsBackground = true, Name = "Guide" };
         th.SetApartmentState(ApartmentState.STA);
@@ -116,8 +121,12 @@ static class GuidePanel
         message = "";
         selected = firstVisible = 0;
         parents.Clear();
-        if (DiscordBridge.Incoming) tab = PartyTab;   // ringing: straight to Answer
+        if (S.Enabled && DiscordBridge.Incoming) tab = PartyTab;   // ringing: straight to Answer
+        if (tab == PartyTab && !S.Enabled) tab = HomeTab;
         title = Tabs[tab];
+        Pc.Watching = tab == SystemTab;
+        Changed(true);
+        UiSound.Play("open");
         items = new List<Item>();
         if (tab == LightsTab) WarmSceneNames();
         IsOpen = true;
@@ -133,7 +142,7 @@ static class GuidePanel
             SlideIn(tv.Left);
         });
         // Fresh friend statuses for the favourites (reads Discord's DM list in the background)
-        DiscordBridge.Do(() => { if (DiscordBridge.Running) DiscordBridge.ListChats(); OnUi(() => { if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); } }); return ""; }, null);
+        if (S.Enabled) DiscordBridge.Do(() => { if (DiscordBridge.Running) DiscordBridge.ListChats(); OnUi(() => { if (IsOpen && parents.Count == 0) { Rebuild(); panel.Invalidate(); } }); return ""; }, null);
     }
 
     // Quick ease-out slide from the left edge
@@ -153,8 +162,76 @@ static class GuidePanel
 
     public static void Close()
     {
+        if (!IsOpen) return;
         IsOpen = false;
-        OnUi(() => { panel.Hide(); if (returnTo != IntPtr.Zero) CouchKit.BringToFront(returnTo); });
+        Pc.Watching = false;
+        UiSound.Play("close");
+        OnUi(() =>
+        {
+            if (returnTo != IntPtr.Zero) CouchKit.BringToFront(returnTo);
+            if (!Animations) { panel.Hide(); return; }
+            // Ease back out to the left, then hide
+            int start = panel.Left, frame = 0;
+            var anim = new System.Windows.Forms.Timer { Interval = 15 };
+            anim.Tick += (s, e) =>
+            {
+                frame++;
+                double t = Math.Min(1, frame / 8.0);
+                panel.Left = (int)(start - panel.Width * t * t);
+                if (t >= 1) { anim.Stop(); anim.Dispose(); if (!IsOpen) panel.Hide(); }
+            };
+            anim.Start();
+        });
+    }
+
+    // --- Motion: the highlight slides between rows, the tab pill between tabs, and new content
+    // fades in. Paint works out where things are; these remember where they were drawn. ---
+    static System.Windows.Forms.Timer animTimer;
+    static bool animating;
+    static RectangleF hiFrom, hiTarget, hiDrawn;
+    static DateTime hiStart;
+    static bool snapHighlight = true;
+    static int tabFrom;
+    static DateTime tabStart = DateTime.MinValue, contentStart = DateTime.MinValue;
+    const double SlideMs = 130, TabMs = 200, FadeMs = 170;
+
+    // New content (tab, sub-menu, back): the highlight jumps rather than slides, and it fades in
+    static void Changed(bool newContent)
+    {
+        snapHighlight = true;
+        if (newContent) contentStart = Clock();
+        Animate();
+    }
+
+    static void Animate()
+    {
+        if (!Animations || animTimer == null) return;
+        if (ui.InvokeRequired) { OnUi(Animate); return; }
+        animating = true;
+        if (!animTimer.Enabled) animTimer.Start();
+    }
+
+    // Animation time: the wall clock, or the frame time when rendering the demo video
+    static Func<DateTime> Clock = () => DateTime.Now;
+
+    static double Progress(DateTime start, double ms)
+    {
+        if (!Animations) return 1;
+        double t = (Clock() - start).TotalMilliseconds / ms;
+        if (t < 1) animating = true;
+        t = Math.Max(0, Math.Min(1, t));
+        return 1 - Math.Pow(1 - t, 3);   // ease out
+    }
+
+    static RectangleF Lerp(RectangleF a, RectangleF b, double t)
+    {
+        Func<float, float, float> l = (u, v) => (float)(u + (v - u) * t);
+        return new RectangleF(l(a.X, b.X), l(a.Y, b.Y), l(a.Width, b.Width), l(a.Height, b.Height));
+    }
+
+    static Color Mix(Color a, Color b, double t)
+    {
+        return Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
     }
 
     public static void Move(int delta)
@@ -162,7 +239,10 @@ static class GuidePanel
         OnUi(() =>
         {
             if (!items.Any(i => !i.Header)) return;
+            int was = selected;
             do selected = (selected + delta + items.Count) % items.Count; while (items[selected].Header);
+            if (selected != was) UiSound.Play("move");
+            Animate();
             panel.Invalidate();
         });
     }
@@ -182,9 +262,11 @@ static class GuidePanel
         OnUi(() =>
         {
             if (parents.Count == 0) { Close(); return; }
+            UiSound.Play("back");
             var up = parents.Pop();
             title = up.Title; items = up.Items; selected = up.Selected; firstVisible = 0;
             message = "";
+            Changed(true);
             if (parents.Count == 0) Rebuild();
             panel.Invalidate();
         });
@@ -197,6 +279,7 @@ static class GuidePanel
         items = new List<Item> { new Item { Text = "Loading…" } };
         selected = firstVisible = 0;
         message = "";
+        Changed(true);
         panel.Invalidate();
         var loader = item.Submenu;
         var level = items;
@@ -208,12 +291,25 @@ static class GuidePanel
                 if (items != level) return;   // backed out while loading
                 items = loaded.Count > 0 ? loaded : new List<Item> { new Item { Text = "Nothing found" } };
                 selected = Selectable(0);
+                Changed(true);
                 panel.Invalidate();
             });
             return "";
         };
-        if (item.Local) ThreadPool.QueueUserWorkItem(_ => { try { load(); } catch (Exception ex) { CouchKit.Log("Guide: " + ex.Message); } });
-        else DiscordBridge.Do(load, null);
+        Run(item.Local, load, null);
+    }
+
+    // Discord work goes through Discord's thread (one thing at a time, in order); everything else
+    // runs straight away on the thread pool, so the Guide works without Discord.
+    static void Run(bool local, Func<string> action, Action<string> done)
+    {
+        if (!local && tab == PartyTab && S.Enabled) { DiscordBridge.Do(action, done); return; }
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            string msg;
+            try { msg = action(); } catch (Exception ex) { msg = ex.Message; CouchKit.Log("Guide: " + ex.Message); }
+            if (done != null) done(msg);
+        });
     }
 
     public static void Select()
@@ -222,13 +318,14 @@ static class GuidePanel
         {
             if (selected >= items.Count) return;
             var item = items[selected];
-            if (item.Submenu != null) { OpenSubmenu(item); return; }
-            if (item.Direct && item.Action != null) { item.Action(); return; }
-            if (item.Action == null) { if (parents.Count == 0 && item.Icon == "close") Close(); return; }
+            if (item.Submenu != null) { UiSound.Play("select"); OpenSubmenu(item); return; }
+            if (item.Action == null) return;
+            UiSound.Play("select");
+            if (item.Direct) { item.Action(); return; }
             message = "…";
             panel.Invalidate();
             bool close = item.CloseAfter;
-            DiscordBridge.Do(item.Action, msg => OnUi(() =>
+            Run(false, item.Action, msg => OnUi(() =>
             {
                 message = msg != null ? msg.Replace("Discord: ", "") : "";
                 if (parents.Count == 0) Rebuild();
@@ -245,7 +342,7 @@ static class GuidePanel
         {
             if (selected >= items.Count || items[selected].Adjust == null) return;
             var item = items[selected];
-            try { item.Level = item.Adjust(direction * 5); } catch (Exception ex) { CouchKit.Log("Volume change failed: " + ex.Message); }
+            try { item.Level = item.Adjust(direction * 5); UiSound.Play("move"); } catch (Exception ex) { CouchKit.Log("Volume change failed: " + ex.Message); }
             panel.Invalidate();
         });
     }
@@ -262,7 +359,11 @@ static class GuidePanel
     {
         OnUi(() =>
         {
-            tab = (tab + direction + Tabs.Length) % Tabs.Length;
+            tabFrom = tab; tabStart = Clock();
+            do tab = (tab + direction + Tabs.Length) % Tabs.Length; while (tab == PartyTab && !S.Enabled);
+            UiSound.Play("tab");
+            Pc.Watching = tab == SystemTab;
+            Changed(true);
             parents.Clear(); title = Tabs[tab]; message = ""; selected = firstVisible = 0; items = new List<Item>();
             if (tab == LightsTab) WarmSceneNames();
             Rebuild();
@@ -348,6 +449,10 @@ static class GuidePanel
     static void HomeItems(List<Item> list)
     {
         var current = PlayniteLink.NowPlaying;
+        lock (notes)
+            if (notes.Count > 0)
+                list.Add(new Item { Text = "Notifications", Sub = Join(notes[0].Title, Achievements.When(notes[0].Time)), Badge = unseen > 0 ? unseen.ToString() : "",
+                                    Icon = "bell", Local = true, Submenu = NotificationsMenu });
         if (current.Length > 0)
             list.Add(new Item { Text = "Resume game", Sub = current, Icon = "play", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusGame(); }); return ""; } });
         list.Add(new Item { Text = "Take a screenshot", Sub = "Saved to Pictures\\CouchKit", Icon = "camera", Direct = true, Action = () =>
@@ -388,6 +493,31 @@ static class GuidePanel
         list.Add(new Item { Text = "Playnite library", Sub = "Everything else", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
     }
 
+    // --- Notifications: things worth seeing later (messages, missed calls, achievements, low
+    // battery, screenshots), kept while CouchKit runs. Home shows them with an unread count. ---
+    class Note { public string Icon, Title, Detail, Image; public DateTime Time; }
+    static readonly List<Note> notes = new List<Note>();
+    static int unseen;
+
+    static void Record(string icon, string title, string detail, string image)
+    {
+        lock (notes)
+        {
+            notes.Insert(0, new Note { Icon = icon, Title = title, Detail = detail ?? "", Image = image, Time = DateTime.Now });
+            if (notes.Count > 40) notes.RemoveAt(notes.Count - 1);
+            unseen++;
+        }
+    }
+
+    static List<Item> NotificationsMenu()
+    {
+        lock (notes)
+        {
+            unseen = 0;
+            return notes.Select(n => new Item { Text = n.Title, Sub = Join(n.Detail, Achievements.When(n.Time)), Icon = n.Image == null ? n.Icon : null, Image = n.Image, Quiet = true }).ToList();
+        }
+    }
+
     // --- Achievements (from the PlayniteAchievements add-on) ---
     static List<Item> AchievementsMenu(string gameId)
     {
@@ -426,6 +556,14 @@ static class GuidePanel
         list.Add(new Item { Text = "Restart Playnite", Sub = "If it gets stuck", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
         list.Add(new Item { Text = "Restart PC", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
         list.Add(new Item { Text = "Shut down", Icon = "power", Submenu = () => Confirm("Shut down", () => { CouchKit.PowerAction(false); return ""; }) });
+        var drives = Pc.Drives();
+        if (drives.Count > 0) list.Add(Heading("Storage"));
+        foreach (var d in drives)
+        {
+            double used = d.TotalGb > 0 ? 1 - d.FreeGb / d.TotalGb : 0;
+            list.Add(new Item { Text = d.Name + (string.IsNullOrEmpty(d.Label) ? "" : "  " + d.Label), Sub = Pc.Size(d.FreeGb) + " free of " + Pc.Size(d.TotalGb),
+                                Icon = "drive", Quiet = true, Progress = used, ProgressText = (int)Math.Round(used * 100) + "% used" });
+        }
     }
 
     static List<Item> Confirm(string what, Func<string> action)
@@ -562,8 +700,24 @@ static class GuidePanel
 
     static bool lastIncoming, lastCalling;
     static string lastBattery = "";
+    static string ringingFrom = "";
+    static DateTime ringEnded = DateTime.MinValue;
+
     static void Tick()
     {
+        // A ring that ended without a call starting is a missed call
+        if (DiscordBridge.Incoming) { ringingFrom = DiscordBridge.IncomingFrom; ringEnded = DateTime.MinValue; }
+        else if (lastIncoming) ringEnded = DateTime.Now;
+        if (ringEnded != DateTime.MinValue && (DateTime.Now - ringEnded).TotalSeconds > 3)
+        {
+            if (!DiscordBridge.InCall)
+            {
+                Record("call", "Missed call" + (ringingFrom.Length > 0 ? " from " + ringingFrom : ""), "Discord", null);
+                UiSound.Play("notify");
+                ShowHud("call", "Missed call", ringingFrom);
+            }
+            ringEnded = DateTime.MinValue;
+        }
         try { battery = CouchKit.ControllerBattery(); batteryPct = CouchKit.ControllerBatteryPercent(battery); } catch { battery = batteryPct = ""; }
         if ((battery == "Low" || battery == "Empty") && battery != lastBattery) ShowHud("batterylow", "Controller battery " + battery.ToLowerInvariant(), "Time to charge it soon");
         lastBattery = battery;
@@ -599,6 +753,8 @@ static class GuidePanel
     // Achievement unlocked: a bigger pop-up with the achievement's icon, one at a time
     public static void Unlocked(Achievements.Achievement a)
     {
+        OnUi(() => Record("trophy", a.Name, Join(a.Game, a.Points > 0 ? a.Points + "G" : ""), a.Icon));
+        UiSound.Play("achievement");
         if (!AchievementPopups) return;
         OnUi(() =>
         {
@@ -623,6 +779,11 @@ static class GuidePanel
     // Corner HUD: a short message top-right for a few seconds, then fades
     static void ShowHud(string icon, string t, string detail)
     {
+        if (icon == "message" || icon == "batterylow" || icon == "camera")
+        {
+            Record(icon, t, detail, null);
+            if (icon != "camera") UiSound.Play("notify");
+        }
         if (IsOpen) return;   // the panel already shows it
         if (hudAchievement != null && hud.Visible) return;   // don't cut an achievement short
         hudAchievement = null;
@@ -669,10 +830,47 @@ static class GuidePanel
 
     static Region Rounded(Rectangle r, int radius) { using (var p = RoundedPath(r, radius)) return new Region(p); }
 
-    static void Line(Graphics g, string s, Font font, Color colour, RectangleF r)
+    const TextFormatFlags OneLine = TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix;
+    const TextFormatFlags Wrapped = TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top;
+
+    static void Line(Graphics g, string s, Font font, Color colour, RectangleF r) { DrawText(g, s, font, colour, Rectangle.Round(r), OneLine); }
+
+    // Text is drawn by Windows' GDI (better spacing and ellipsis than GDI+), which is slow to call on
+    // a GDI+ surface: most of a frame's time. So each piece of text is rendered once, white on black,
+    // turned into a coloured image with transparency, and cached; repaints just copy the images.
+    static readonly Dictionary<string, Bitmap> texts = new Dictionary<string, Bitmap>();
+    static void DrawText(Graphics g, string s, Font font, Color colour, Rectangle r, TextFormatFlags flags)
     {
-        TextRenderer.DrawText(g, s, font, Rectangle.Round(r), colour,
-            TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix);
+        if (string.IsNullOrEmpty(s) || r.Width <= 0 || r.Height <= 0) return;
+        string key = s + "" + font.Name + font.Size + font.Style + "|" + colour.ToArgb() + "|" + r.Width + "x" + r.Height + "|" + (int)flags;
+        Bitmap bmp;
+        if (!texts.TryGetValue(key, out bmp))
+        {
+            var fit = TextRenderer.MeasureText(s, font, r.Size, flags);
+            int w = Math.Max(1, Math.Min(r.Width, fit.Width + 2)), h = Math.Max(1, Math.Min(r.Height, fit.Height + 2));
+            bmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var tg = Graphics.FromImage(bmp))
+            {
+                tg.Clear(Color.Black);
+                TextRenderer.DrawText(tg, s, font, new Rectangle(0, 0, r.Width, r.Height), Color.White, Color.Black, flags);
+            }
+            // Brightness becomes coverage; the colour goes on top
+            var data = bmp.LockBits(new Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.ReadWrite, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            var px = new byte[data.Stride * h];
+            Marshal.Copy(data.Scan0, px, 0, px.Length);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * data.Stride + x * 4;
+                    int a = Math.Max(px[i], Math.Max(px[i + 1], px[i + 2]));
+                    px[i] = colour.B; px[i + 1] = colour.G; px[i + 2] = colour.R; px[i + 3] = (byte)(a * colour.A / 255);
+                }
+            Marshal.Copy(px, 0, data.Scan0, px.Length);
+            bmp.UnlockBits(data);
+            if (texts.Count > 800) { foreach (var b in texts.Values) b.Dispose(); texts.Clear(); }
+            texts[key] = bmp;
+        }
+        g.DrawImageUnscaled(bmp, r.X, r.Y);
     }
 
     // Where to put a line of text (drawn by Line) so its letters, rather than its line box, are centred
@@ -714,16 +912,28 @@ static class GuidePanel
     // single letters have uneven space around them in the font, which puts them off-centre otherwise.
     static void Centred(Graphics g, string s, string family, FontStyle style, float size, Brush brush, float cx, float cy)
     {
-        using (var ff = new FontFamily(family))
-        using (var path = new GraphicsPath())
+        // Outlines are cached centred on (0, 0); each draw only moves a copy into place
+        string key = s + "|" + family + "|" + (int)style + "|" + size;
+        GraphicsPath shape;
+        if (!shapes.TryGetValue(key, out shape))
         {
-            path.AddString(s, ff, (int)style, size, PointF.Empty, StringFormat.GenericTypographic);
-            var b = path.GetBounds();
-            if (b.Width <= 0) return;
-            using (var m = new Matrix()) { m.Translate(cx - (b.Left + b.Width / 2), cy - (b.Top + b.Height / 2)); path.Transform(m); }
+            shape = new GraphicsPath();
+            using (var ff = new FontFamily(family)) shape.AddString(s, ff, (int)style, size, PointF.Empty, StringFormat.GenericTypographic);
+            var b = shape.GetBounds();
+            using (var m = new Matrix()) { m.Translate(-(b.Left + b.Width / 2), -(b.Top + b.Height / 2)); shape.Transform(m); }
+            if (b.Width <= 0) shape = null;
+            lock (shapes) shapes[key] = shape;
+        }
+        if (shape == null) return;
+        using (var path = (GraphicsPath)shape.Clone())
+        using (var m = new Matrix())
+        {
+            m.Translate(cx, cy);
+            path.Transform(m);
             g.FillPath(brush, path);
         }
     }
+    static readonly Dictionary<string, GraphicsPath> shapes = new Dictionary<string, GraphicsPath>();
 
     // Game covers, loaded once and kept small
     static readonly Dictionary<string, Image> covers = new Dictionary<string, Image>();
@@ -750,11 +960,42 @@ static class GuidePanel
     }
 
     // Cover art cropped to a 3:4 tile with rounded corners
+    // Covers and icons are drawn many times a second while the Guide animates, so each is scaled
+    // and rounded once into a tile of the exact size, then just copied onto the panel
+    static readonly Dictionary<string, Bitmap> tiles = new Dictionary<string, Bitmap>();
     static void DrawCover(Graphics g, Image img, RectangleF r, float radius, bool faded = false)
     {
+        string key = img.GetHashCode() + "|" + (int)r.Width + "|" + (int)r.Height + "|" + (int)radius + "|" + faded;
+        Bitmap tile;
+        if (!tiles.TryGetValue(key, out tile))
+        {
+            tile = new Bitmap(Math.Max(1, (int)Math.Round(r.Width)), Math.Max(1, (int)Math.Round(r.Height)), System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var tg = Graphics.FromImage(tile))
+            {
+                tg.SmoothingMode = SmoothingMode.AntiAlias;
+                // Rounded corners: draw the picture, then cut the corners out with antialiased edges
+                PaintCover(tg, img, new RectangleF(0, 0, tile.Width, tile.Height), faded);
+                using (var outside = new GraphicsPath())
+                using (var round = RoundedPath(new RectangleF(0, 0, tile.Width, tile.Height), radius))
+                {
+                    outside.AddRectangle(new RectangleF(-2, -2, tile.Width + 4, tile.Height + 4));
+                    outside.AddPath(round, false);
+                    outside.FillMode = FillMode.Alternate;
+                    tg.CompositingMode = CompositingMode.SourceCopy;
+                    using (var clear = new SolidBrush(Color.Transparent)) tg.FillPath(clear, outside);
+                }
+            }
+            if (tiles.Count > 400) tiles.Clear();
+            tiles[key] = tile;
+        }
+        g.DrawImageUnscaled(tile, (int)Math.Round(r.Left), (int)Math.Round(r.Top));
+    }
+
+    static void PaintCover(Graphics g, Image img, RectangleF r, bool faded)
+    {
         var state = g.Save();
-        using (var path = RoundedPath(r, radius)) g.SetClip(path, CombineMode.Intersect);
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.SetClip(r);
         float scale = Math.Max(r.Width / img.Width, r.Height / img.Height);
         float w = img.Width * scale, h = img.Height * scale;
         var dest = new RectangleF(r.Left + (r.Width - w) / 2, r.Top + (r.Height - h) / 2, w, h);
@@ -795,8 +1036,36 @@ static class GuidePanel
         return item.Sub.Length > 0 ? (int)(unit * 2.8f) : (int)(unit * 2.2f);
     }
 
+    // System tab: CPU, GPU, memory and uptime in a 2 x 2 grid
+    static int PaintPcCard(Graphics g, int unit, int x, int y, int w, Font heading, Font bold, Font small)
+    {
+        var st = Pc.Latest;
+        var card = new RectangleF(x - unit / 2, y, w + unit, unit * 5.6f);
+        using (var path = RoundedPath(card, unit * 0.6f))
+        using (var fill = new SolidBrush(Card)) g.FillPath(fill, path);
+        Func<double, string> temp = v => v >= 0 ? ((int)Math.Round(v)) + "°C" : "";
+        Func<double, string> pct = v => v >= 0 ? ((int)Math.Round(v)) + "%" : "";
+        var cells = new[]
+        {
+            new[] { "CPU", Join(temp(st.CpuTemp), pct(st.CpuLoad)), st.CpuTemp >= 85 ? "hot" : "" },
+            new[] { "GPU", Join(temp(st.GpuTemp), pct(st.GpuLoad), st.GpuPower >= 0 ? ((int)Math.Round(st.GpuPower)) + " W" : ""), st.GpuTemp >= 83 ? "hot" : "" },
+            new[] { "MEMORY", st.MemTotalGb > 0 ? st.MemUsedGb.ToString("0.0") + " / " + ((int)Math.Round(st.MemTotalGb)) + " GB" : "", "" },
+            new[] { "ON FOR", st.Uptime.TotalSeconds > 0 ? Pc.Uptime(st.Uptime) : "", "" },
+        };
+        float colW = (card.Width - unit * 1.4f) / 2;
+        for (int i = 0; i < cells.Length; i++)
+        {
+            float cx = card.Left + unit * 0.9f + (i % 2) * colW, cy = card.Top + unit * 0.6f + (i / 2) * unit * 2.5f;
+            Line(g, cells[i][0], heading, Aqua, new RectangleF(cx, cy, colW, heading.Height * 1.3f));
+            string value = cells[i][1].Length > 0 ? cells[i][1] : "…";
+            Line(g, value, bold, cells[i][2] == "hot" ? Red : Text, new RectangleF(cx, cy + heading.Height * 1.15f, colW - unit * 0.3f, bold.Height * 1.3f));
+        }
+        return (int)(card.Bottom + unit * 0.7f);
+    }
+
     static void PaintPanel(Graphics g, Size size)
     {
+        animating = false;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         int unit = size.Height / 40;   // scales with the TV's resolution
@@ -816,25 +1085,51 @@ static class GuidePanel
             string clock = DateTime.Now.ToString("HH:mm");
             int clockW = TextRenderer.MeasureText(clock, bold).Width;
             Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, TextTop(bold, clock, y + unit * 1.0f), clockW + 4, bold.Height * 1.3f));
-            float tx = x - unit * 0.5f, tabH = unit * 2.0f, iconS = unit * 1.05f;
+            float tabH = unit * 2.0f, iconS = unit * 1.05f;
+            // Where each tab sits when a given tab is the current one; while switching, every tab
+            // glides from its old place to its new one and the pill slides and resizes with it
+            Func<int, RectangleF[]> layout = current =>
+            {
+                var slots = new RectangleF[Tabs.Length];
+                float lx = x - unit * 0.5f;
+                for (int t = 0; t < Tabs.Length; t++)
+                {
+                    if (t == PartyTab && !S.Enabled) { slots[t] = new RectangleF(lx, y, 0, tabH); continue; }
+                    float tw = t == current ? unit * 3.0f + TextRenderer.MeasureText(Tabs[t], bold).Width : unit * 2.4f;
+                    slots[t] = new RectangleF(lx, y, tw, tabH);
+                    lx += tw + unit * 0.15f;
+                }
+                return slots;
+            };
+            double tabT = Progress(tabStart, TabMs);
+            var now = layout(tab);
+            var before = tabT < 1 ? layout(tabFrom) : now;
+            var pillRect = Lerp(before[tabT < 1 ? tabFrom : tab], now[tab], tabT);
+            using (var path = RoundedPath(pillRect, tabH / 2))
+            {
+                using (var fill = new SolidBrush(Card)) g.FillPath(fill, path);
+                Outline(g, path, pillRect, unit / 10f);
+            }
             for (int t = 0; t < Tabs.Length; t++)
             {
+                if (t == PartyTab && !S.Enabled) continue;
                 bool on = t == tab;
-                int labelW = on ? TextRenderer.MeasureText(Tabs[t], bold).Width : 0;
-                float tw = on ? unit * 2.6f + labelW + unit * 0.4f : unit * 2.4f;
-                var pill = new RectangleF(tx, y, tw, tabH);
+                var slot = Lerp(before[t], now[t], tabT);
+                // The icon moves from the middle of its slot to the pill's left as it becomes current
+                float iconX = on ? (float)(slot.Left + (slot.Width - iconS) / 2 + (unit * 0.75f - (slot.Width - iconS) / 2) * tabT) : slot.Left + (slot.Width - iconS) / 2;
+                if (!on && t == tabFrom && tabT < 1) iconX = slot.Left + (slot.Width - iconS) / 2;
+                using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(slot.Left, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
+                    DrawIcon(g, TabIcons[t], iconX, y + (tabH - iconS) / 2, iconS, ib);
                 if (on)
-                    using (var path = RoundedPath(pill, tabH / 2))
-                    {
-                        using (var fill = new SolidBrush(Card)) g.FillPath(fill, path);
-                        Outline(g, path, pill, unit / 10f);
-                    }
-                using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(tx, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
-                    DrawIcon(g, TabIcons[t], tx + (on ? unit * 0.75f : (tw - iconS) / 2), y + (tabH - iconS) / 2, iconS, ib);
-                if (on) Line(g, Tabs[t], bold, Text, new RectangleF(tx + unit * 2.25f, TextTop(bold, Tabs[t], y + tabH / 2), labelW + 4, bold.Height * 1.3f));
-                tx += tw + unit * 0.15f;
+                {
+                    int labelW = TextRenderer.MeasureText(Tabs[t], bold).Width;
+                    float room = slot.Right - (slot.Left + unit * 2.25f) - unit * 0.3f;
+                    if (room > unit * 0.5f)
+                        Line(g, Tabs[t], bold, Mix(Card, Text, tabT), new RectangleF(slot.Left + unit * 2.25f, TextTop(bold, Tabs[t], y + tabH / 2), Math.Min(labelW + 4, room + 4), bold.Height * 1.3f));
+                }
             }
             y += (int)(tabH + unit * 1.0f);
+            int contentTop = y;
 
             // In a sub-menu: where you are, then its title
             if (parents.Count > 0)
@@ -847,13 +1142,25 @@ static class GuidePanel
             }
 
             // Status card: Home shows what's playing, Party the call (or the incoming call)
+            if (parents.Count == 0 && tab == SystemTab) y = PaintPcCard(g, unit, x, y, w, heading, bold, small);
             if (parents.Count == 0 && (tab == PartyTab || tab == HomeTab))
             {
                 bool home = tab == HomeTab, playing = PlayniteLink.Running;
                 var currentGame = home && playing ? PlayniteLink.Current : null;
                 var cover = Cover(currentGame);
                 var achieved = currentGame != null ? Achievements.ForGame(currentGame.Id) : null;
-                var card = new RectangleF(x - unit / 2, y, w + unit, unit * (achieved != null ? 4.4f : 3.6f));
+                // This session, and HowLongToBeat's estimates
+                string line3 = "";
+                if (home && playing)
+                {
+                    var started = PlayniteLink.SessionStart;
+                    var hltb = currentGame != null ? PlayniteLink.HowLongToBeat(currentGame.Id) : null;
+                    Func<long, string> h = sec => "~" + Math.Max(1, (int)Math.Round(sec / 3600.0)) + " h";
+                    line3 = Join(started.HasValue ? "Session " + PlayniteLink.Duration(DateTime.Now - started.Value) : "",
+                                 hltb != null && hltb[0] > 0 ? "Story " + h(hltb[0]) : "", hltb != null && hltb[2] > 0 ? "100% " + h(hltb[2]) : "");
+                }
+                float extra = (line3.Length > 0 ? 0.95f : 0) + (achieved != null ? 0.8f : 0);
+                var card = new RectangleF(x - unit / 2, y, w + unit, unit * (3.6f + extra));
                 using (var path = RoundedPath(card, unit * 0.6f))
                 {
                     using (var fill = new SolidBrush(!home && DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
@@ -887,12 +1194,13 @@ static class GuidePanel
                 Line(g, over, heading, Aqua, new RectangleF(cx, card.Top + unit * 0.45f, cw, heading.Height * 1.3f));
                 Line(g, line1, bold, Text, new RectangleF(cx, card.Top + unit * 1.15f, cw, bold.Height * 1.25f));
                 Line(g, line2, small, !home && DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(cx, card.Top + unit * 2.45f, cw, small.Height * 1.25f));
+                if (line3.Length > 0) Line(g, line3, small, Dim, new RectangleF(cx, card.Top + unit * 3.4f, cw, small.Height * 1.25f));
                 if (achieved != null)
                 {
                     // Achievements: trophy, bar, "2 / 54"
                     string count = achieved.Unlocked + " / " + achieved.Total;
                     int countW = TextRenderer.MeasureText(count, small).Width;
-                    float by = card.Top + unit * 3.55f, bh = unit * 0.26f, bx = cx + unit * 1.0f, bw = cw - unit * 1.0f - countW - unit * 0.5f;
+                    float by = card.Top + unit * (line3.Length > 0 ? 4.55f : 3.55f), bh = unit * 0.26f, bx = cx + unit * 1.0f, bw = cw - unit * 1.0f - countW - unit * 0.5f;
                     using (var tb = new LinearGradientBrush(new RectangleF(cx, by - unit, unit, unit * 2), Aqua, Magenta, 45f)) DrawIcon(g, "trophy", cx, by + bh / 2 - unit * 0.36f, unit * 0.72f, tb);
                     using (var track = new SolidBrush(Color.FromArgb(50, 255, 255, 255)))
                     using (var tp = RoundedPath(new RectangleF(bx, by, bw, bh), bh / 2)) g.FillPath(track, tp);
@@ -915,6 +1223,27 @@ static class GuidePanel
             Func<int, int, int> span = (from, to) => { int sum = 0; for (int k = from; k <= to && k < heights.Count; k++) sum += heights[k] + gap; return sum; };
             while (firstVisible < selected && span(firstVisible, selected) > bottom - y) firstVisible++;
             if (firstVisible > 0) DrawIcon(g, "up", x + w - unit * 0.6f, y - unit * 0.9f, unit * 0.7f, dim);
+            // The highlight: where the selected row is now, reached by sliding from where it was drawn
+            {
+                int ly = y;
+                for (int i = firstVisible; i < items.Count && ly + heights[i] <= bottom; i++)
+                {
+                    if (i == selected && !items[i].Header)
+                    {
+                        var target = new RectangleF(x - unit / 2, ly, w + unit, heights[i]);
+                        if (snapHighlight || hiDrawn.IsEmpty) { hiFrom = target; hiTarget = target; snapHighlight = false; }
+                        else if (target != hiTarget) { hiFrom = hiDrawn; hiTarget = target; hiStart = Clock(); }
+                        hiDrawn = Lerp(hiFrom, hiTarget, Progress(hiStart, SlideMs));
+                        using (var path = RoundedPath(hiDrawn, unit * 0.5f))
+                        {
+                            using (var card = new SolidBrush(Card)) g.FillPath(card, path);
+                            Outline(g, path, hiDrawn, unit / 10f);
+                        }
+                        break;
+                    }
+                    ly += heights[i] + gap;
+                }
+            }
             int last = firstVisible - 1;
             for (int i = firstVisible; i < items.Count && y + heights[i] <= bottom; i++)
             {
@@ -929,15 +1258,6 @@ static class GuidePanel
                 }
                 bool sel = i == selected;
                 var r = new Rectangle(x - unit / 2, y, w + unit, rowH);
-                if (sel)
-                {
-                    // Selected: a card with the aqua-to-magenta outline, like the current tab
-                    using (var path = RoundedPath(r, unit * 0.5f))
-                    {
-                        using (var card = new SolidBrush(Card)) g.FillPath(card, path);
-                        Outline(g, path, r, unit / 10f);
-                    }
-                }
                 int textX = x + unit / 2;
                 var cover = Cover(item.Game);
                 var picture = Picture(item.Image);
@@ -1015,8 +1335,7 @@ static class GuidePanel
                 {
                     Line(g, item.Text, heading, Aqua, new RectangleF(textX, y + unit * 0.5f, textRight - textX, heading.Height * 1.3f));
                     var box = new Rectangle(textX, (int)(y + unit * 0.5f + heading.Height * 1.35f), textRight - textX, rowH - (int)(unit * 0.5f + heading.Height * 1.35f));
-                    TextRenderer.DrawText(g, item.Sub, small, box, sel ? Text : Color.FromArgb(205, 205, 222),
-                        TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top);
+                    DrawText(g, item.Sub, small, sel ? Text : Color.FromArgb(205, 205, 222), box, Wrapped);
                 }
                 else if (item.Sub.Length > 0)
                 {
@@ -1042,6 +1361,10 @@ static class GuidePanel
                 y += rowH + gap;
             }
             if (last < items.Count - 1) DrawIcon(g, "down", x + w - unit * 0.6f, y - unit * 0.1f, unit * 0.7f, dim);
+            // New content fades in
+            double fade = Progress(contentStart, FadeMs);
+            if (fade < 1)
+                using (var veil = new SolidBrush(Color.FromArgb((int)(255 * (1 - fade)), Back))) g.FillRectangle(veil, 0, contentTop, size.Width - unit / 3, bottom - contentTop + unit);
 
             // Footer: the result of the last action, button hints, controller battery
             if (message.Length > 0)
@@ -1157,6 +1480,7 @@ static class GuidePanel
     public static void Preview(DiscordSettings settings, string folder)
     {
         S = settings;
+        Animations = false;   // still frames: everything where it ends up
         using (var fonts = new InstalledFontCollection())
             if (fonts.Families.Any(f => f.Name == "Segoe Fluent Icons")) iconFont = "Segoe Fluent Icons";
         DiscordBridge.Running = true; DiscordBridge.InCall = true; DiscordBridge.CallName = "General / Charlton Home";
@@ -1173,7 +1497,18 @@ static class GuidePanel
                 bmp.Save(System.IO.Path.Combine(folder, name), System.Drawing.Imaging.ImageFormat.Png);
             }
         };
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         render("panel.png", 1305, 2160, PaintPanel);
+        using (var bmp = new Bitmap(1305, 2160))
+        using (var g = Graphics.FromImage(bmp))
+        {
+            sw.Restart();
+            for (int i = 0; i < 10; i++) { g.Clear(Back); PaintPanel(g, new Size(1305, 2160)); }
+            CouchKit.Log("Preview: a 4K Guide frame takes " + sw.ElapsedMilliseconds / 10 + " ms to paint");
+        }
+        Pc.Sample();
+        Record("trophy", "Brotector", "Gears of War: E-Day  ·  15G", null);
+        Record("call", "Missed call from Matt", "Discord", null);
         battery = "Medium"; batteryPct = "73%";
         for (int t = 1; t < Tabs.Length; t++)
         {
@@ -1309,9 +1644,14 @@ static class GuidePanel
         battery = "Full"; batteryPct = "92%";
 
         int frames = (int)(30.5 * Fps);
+        var epoch = new DateTime(2026, 1, 1);
+        double frameTime = 0;
+        Clock = () => epoch.AddSeconds(frameTime);
+        int lastTab = -1, lastDepth = -1; bool wasShown = false;
         for (int n = 0; n < frames; n++)
         {
             double t = (double)n / Fps;
+            frameTime = t;
             // --- Script ---
             // 1.0 HUD connected · 4.3 Guide in (Home, browse games) · 7.6 RB Party, down to Chats
             // 9.8 A Chats · 11.0 A Matt's chat, down to the messages · 13.4 B, 13.8 B
@@ -1361,6 +1701,15 @@ static class GuidePanel
                     }
                 }
             }
+            // Transitions, as the real Guide does them: tab glides, content fades, highlight snaps
+            bool shown = panelX >= 0;
+            if (shown && (!wasShown || tab != lastTab))
+            {
+                if (wasShown && lastTab >= 0) { tabFrom = lastTab; tabStart = Clock(); }
+                Changed(true);
+            }
+            else if (shown && parents.Count != lastDepth) Changed(true);
+            wasShown = shown; lastTab = tab; lastDepth = parents.Count;
             hudIcon = t < 27.4 ? "people" : "micoff";
             hudTitle = t < 27.4 ? "Connected" : "Microphone muted";
             hudDetail = t < 4.2 ? "General / Charlton Home" : t < 27.4 ? "Matt" : "";
@@ -1384,6 +1733,7 @@ static class GuidePanel
         }
         bg.Dispose();
         PlayniteLink.Pretend = null;
+        Clock = () => DateTime.Now;
     }
 
     // Draws one of the windows (panel, banner, HUD) onto a frame: rounded, at an opacity

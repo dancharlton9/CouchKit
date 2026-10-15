@@ -69,6 +69,45 @@ static class PlayniteLink
         return Start(game);
     }
 
+    // When the running game started: the add-on writes current-game.txt as it launches
+    public static DateTime? SessionStart
+    {
+        get
+        {
+            if (Pretend != null) return DateTime.Now.AddMinutes(-72);
+            try { return File.Exists(GamePath) ? (DateTime?)File.GetLastWriteTime(GamePath) : null; } catch { return null; }
+        }
+    }
+
+    // "1 h 12 min" / "8 min"
+    public static string Duration(TimeSpan t)
+    {
+        if (t.TotalHours >= 1) return (int)t.TotalHours + " h " + t.Minutes + " min";
+        return Math.Max(1, (int)t.TotalMinutes) + " min";
+    }
+
+    // HowLongToBeat times (seconds) from the HowLongToBeat add-on's data, if it has the game:
+    // main story, main + extras, completionist. Zero where unknown.
+    static readonly string HltbDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                                                  @"Playnite\ExtensionsData\e08cd51f-9c9a-4ee3-a094-fde03b55492f\HowLongToBeat");
+    public static long[] HowLongToBeat(string gameId)
+    {
+        try
+        {
+            string file = Path.Combine(HltbDir, gameId + ".json");
+            if (string.IsNullOrEmpty(gameId) || !File.Exists(file)) return null;
+            var root = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(file)) as Dictionary<string, object>;
+            var items = root != null && root.ContainsKey("Items") ? root["Items"] as object[] : null;
+            var first = items != null && items.Length > 0 ? items[0] as Dictionary<string, object> : null;
+            var data = first != null && first.ContainsKey("GameHltbData") ? first["GameHltbData"] as Dictionary<string, object> : null;
+            if (data == null) return null;
+            Func<string, long> get = k => data.ContainsKey(k) && data[k] != null ? Convert.ToInt64(data[k]) : 0;
+            var times = new[] { get("MainStoryClassic"), get("MainExtraClassic"), get("CompletionistClassic") };
+            return times.Any(t => t > 0) ? times : null;
+        }
+        catch { return null; }
+    }
+
     public static string Hours(long seconds)
     {
         if (seconds <= 0) return "not played yet";

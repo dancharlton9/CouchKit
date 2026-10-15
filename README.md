@@ -31,14 +31,30 @@ CouchKit is a single small background app with no window. Each feature can be sw
 
 *The Guide, call banner and corner HUD over a game ([full-quality video](docs/party-demo.mp4)).*
 
-**Double-tap the Xbox button** to open the Guide over whatever is running. **LB/RB** switch tabs, the D-pad moves, **A** selects and **B** goes back.
-- **Home:** what's playing (with its cover), **Resume**, **Take a screenshot** (to PicturesCouchKit), **Close game**, and your recently played games from Playnite with cover art. Pick one to start it, or, while something is running, to **switch** to it: CouchKit closes the current game and starts the new one through Playnite.
+**Double-tap the Xbox button** to open the Guide over whatever is running. **LB/RB** switch tabs, the D-pad or left stick moves (hold to scroll, faster the longer you hold), **A** selects and **B** goes back. Discord is optional: without it there's no Party tab, and everything else works the same.
+- **Home:** what's playing (with its cover, how long this session has run, HowLongToBeat's estimates if you have that add-on, and achievement progress), **Notifications**, **Resume**, **Take a screenshot** (to PicturesCouchKit), **Close game**, and your recently played games from Playnite with cover art. Pick one to start it, or, while something is running, to **switch** to it: CouchKit closes the current game and starts the new one through Playnite.
 - **Party** (Discord, optional): see below.
 - **Audio:** choose where sound plays (TV or headset), and a volume mixer for the game, Discord and everything, adjusted with D-pad left/right.
 - **Lights:** Home Assistant scenes, room lights on/off, and PC lighting on/off.
-- **System:** turn the screen off, restart Playnite, restart or shut down the PC (each asks first).
+- **System:** the PC's status (CPU and GPU temperature and load, GPU power, memory, how long it's been on), turn the screen off, restart Playnite, restart or shut down the PC (each asks first), and free space on each drive.
 
 The footer shows the controller's battery as a percentage, and a warning pops up when it runs low.
+
+**Notifications** collects what you might have missed while playing or while the Guide was open: Discord messages, missed calls, achievements, low battery and screenshots. Home shows them with an unread count.
+
+**Sound and motion:** quiet clicks and chimes (synthesised, nothing to install), the highlight sliding between rows, the tab pill gliding between tabs, and new content fading in. Both can be turned off.
+
+**CPU temperature** needs admin rights to read, and [FanControl](https://getfancontrol.com/) already reads it. If you use FanControl, CouchKit can pass its readings to the Guide through a small helper that starts at sign-in with admin rights. The helper is CouchKit.exe itself with `--sensors`, and it only reads; it never touches the fans. To set it up, run this once in an admin PowerShell:
+
+```powershell
+$exe = Join-Path $env:LOCALAPPDATA 'CouchKitCouchKit.exe'
+Register-ScheduledTask -TaskName 'CouchKit sensors' -Action (New-ScheduledTaskAction -Execute $exe -Argument '--sensors') `
+  -Trigger (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN$env:USERNAME") -RunLevel Highest `
+  -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0)
+Start-ScheduledTask 'CouchKit sensors'
+```
+
+Without it, the System tab still shows everything except the CPU temperature (GPU temperature comes from nvidia-smi on NVIDIA cards).
 
 **Achievements** (optional, needs the [PlayniteAchievements](https://playnite.link/addons.html) add-on)
 - The now-playing card shows the game's achievement progress, for example 2 / 54.
@@ -70,7 +86,7 @@ Discord has no console-style "transfer call" for PCs, so CouchKit drives the Dis
 |---|---|
 | Xbox button (tap) | Switch between the game and Playnite. While a call is ringing, open the Guide to answer |
 | Xbox button (double-tap) | The Guide, or leave mouse mode |
-| In the Guide | LB/RB change tab, D-pad moves, left/right changes volume, A selects, B goes back |
+| In the Guide | LB/RB change tab, D-pad or left stick moves (hold to scroll), left/right changes volume, A selects, B goes back |
 | Hold Back + Start | Close the game (keep holding to force-close) |
 
 ## Requirements
@@ -141,7 +157,9 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Display.VirtualDisplayNames` | `Virtual`, `SudoMaker`, `IddSample`, `Parsec` | A display adapter whose name contains one of these counts as a streaming display |
 | `Audio.TvDeviceName` | empty (off) | Part of the TV's name in Windows' sound settings, for example `LG TV`. Sound is switched back to it when the TV is the only screen |
 | `Audio.HeadsetDeviceName` | empty (off) | Part of a headset's name, for example `VIRTUOSO`. While it's connected, it becomes the default speaker and microphone instead of the TV |
-| `Discord.Enabled` | `true` | The Guide's Party tab and Discord controls |
+| `Discord.Enabled` | `true` | The Guide's Party tab and Discord controls. The rest of the Guide works without it |
+| `Guide.Sounds` / `SoundVolume` | `true` / `60` | The Guide's clicks and chimes, and their volume in percent |
+| `Guide.Animations` | `true` | Sliding highlight and tabs, and fades |
 | `Discord.Favourites` | none | Party tab entries. A friend: `{"Label": "My brother", "Friend": "their name as shown in Discord's DM list"}`. A voice channel: `{"Label": "Gaming", "Server": "Server name", "Channel": "General"}`. Friends must have a recent DM, so they appear in Discord's direct messages list |
 | `Achievements.Enabled` / `Popups` | `true` / `true` | Achievements in the Guide, and the TV pop-up when one unlocks |
 | `Discord.QuickReplies` | five short replies | The messages offered under **Quick reply** on a chat's page |

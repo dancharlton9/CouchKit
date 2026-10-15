@@ -3,6 +3,7 @@
 // search keyboard, Back its menu). Instead:
 //   Double-tap the Xbox button   open/close the Guide (CouchKit.cs detects the double tap).
 //                                It takes the focus, so D-pad/A/B go to the panel and nothing else.
+//                                Up/down/left/right also work on the left stick, and repeat when held.
 //   Mouse mode (started from the panel): left stick moves the pointer, A clicks, B right-clicks,
 //                                right stick scrolls; double-tap the Xbox button to leave it.
 using System;
@@ -17,6 +18,10 @@ static class PadExtras
     const ushort Up = 0x0001, Down = 0x0002, Left = 0x0004, Right = 0x0008, LB = 0x0100, RB = 0x0200, A = 0x1000, B = 0x2000;
     static readonly ushort[] last = new ushort[4];
     static bool mouseMode;
+    // Hold-to-repeat in the Guide, per pad and direction (up, down, left, right): when it was
+    // first pressed and when it last fired
+    static readonly DateTime[,] heldSince = new DateTime[4, 4], lastFire = new DateTime[4, 4];
+    static readonly bool[,] held = new bool[4, 4];
     static double subX, subY;
 
     static PadExtras()
@@ -46,10 +51,34 @@ static class PadExtras
         // The Guide has the focus while it's open: it takes the D-pad, A and B
         if (GuidePanel.IsOpen)
         {
-            if (pressed(Up)) GuidePanel.Move(-1);
-            if (pressed(Down)) GuidePanel.Move(1);
-            if (pressed(Left)) GuidePanel.Adjust(-1);
-            if (pressed(Right)) GuidePanel.Adjust(1);
+            // D-pad or left stick; held, it repeats after a pause and speeds up the longer it's held
+            double sx = lx / 32768.0, sy = ly / 32768.0;
+            bool vertical = Math.Abs(sy) >= Math.Abs(sx);
+            bool[] dir =
+            {
+                (buttons & Up) != 0 || (vertical && sy > 0.5),
+                (buttons & Down) != 0 || (vertical && sy < -0.5),
+                (buttons & Left) != 0 || (!vertical && sx < -0.5),
+                (buttons & Right) != 0 || (!vertical && sx > 0.5),
+            };
+            for (int d = 0; d < 4; d++)
+            {
+                if (!dir[d]) { held[pad, d] = false; continue; }
+                var now = DateTime.Now;
+                bool fire = false;
+                if (!held[pad, d]) { held[pad, d] = true; heldSince[pad, d] = now; fire = true; }
+                else
+                {
+                    double heldMs = (now - heldSince[pad, d]).TotalMilliseconds;
+                    double every = heldMs < 1500 ? 110 : heldMs < 3000 ? 70 : 45;
+                    if (heldMs > 380 && (now - lastFire[pad, d]).TotalMilliseconds >= every) fire = true;
+                }
+                if (!fire) continue;
+                lastFire[pad, d] = now;
+                if (d == 0) GuidePanel.Move(-1);
+                else if (d == 1) GuidePanel.Move(1);
+                else GuidePanel.Adjust(d == 2 ? -1 : 1);
+            }
             if (pressed(LB)) GuidePanel.Tab(-1);
             if (pressed(RB)) GuidePanel.Tab(1);
             if (pressed(A)) GuidePanel.Select();

@@ -49,6 +49,11 @@
     "LightScenes": [],
     "RoomLights": []
   },
+  "Guide": {
+    "Sounds": true,
+    "SoundVolume": 60,
+    "Animations": true
+  },
   "Achievements": {
     "Enabled": true,
     "Popups": true

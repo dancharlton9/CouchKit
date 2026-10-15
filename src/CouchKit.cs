@@ -548,6 +548,11 @@ static class CouchKit
 
     static void Main(string[] args)
     {
+        if (args.Length > 0 && (args[0] == "--sensors" || args[0] == "--sensors-copy"))   // admin helper: FanControl's sensors to sensors.json
+        {
+            Pc.SensorsHelper(args[0] == "--sensors-copy");
+            return;
+        }
         if (args.Length > 1 && args[0] == "--demo")   // demo video frames: --demo <folder> [background image]
         {
             string note;
@@ -583,6 +588,8 @@ static class CouchKit
                 Lighting.Start(S.Lighting);
             }
             DiscordBridge.Start(S.Discord);
+            UiSound.Configure(S.Guide.Sounds, S.Guide.SoundVolume);
+            GuidePanel.Animations = S.Guide.Animations;
             GuidePanel.Start(S.Discord);
             if (S.Achievements.Enabled && Achievements.Available)
             {
