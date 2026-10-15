@@ -1,10 +1,11 @@
-// Party panel: an Xbox-guide-style Discord menu on the TV, driven by the controller.
+// The Guide: an Xbox-guide-style menu on the TV, driven by the controller.
 //   Double-tap the Xbox button to open/close it (a single tap opens it while a call is ringing);
-//   D-pad up/down moves, left/right changes volume, A selects, B goes back.
-// Shows the current call, an incoming call (Answer / Decline), the Discord favourites from
-// couchkit.json, Chats (recent DMs and group chats with their status, read live from Discord),
-// Voice channels (server, then channel), Volume (game / Discord / everything), mute, deafen, leave
-// and "Open Discord" (mouse mode).
+//   LB/RB switch tabs, D-pad up/down moves, left/right changes volume, A selects, B goes back.
+// Tabs: Home (the running game, recently played games from Playnite: start or swap, screenshot,
+// close game), Party (Discord: the current or incoming call, favourites from couchkit.json, chats
+// with messages and quick replies, voice channels, mute, deafen), Audio (output device and volume
+// mixer), Lights (Home Assistant scenes, room lights, PC lighting) and System (screen off,
+// restart, shut down).
 // Also: an incoming/outgoing call banner and a corner HUD for call, microphone and message events,
 // both shown without taking the focus from the game.
 using System;
@@ -17,16 +18,20 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
-static class PartyPanel
+static class GuidePanel
 {
     // An entry runs an Action on the Discord thread (or directly, if Direct), opens a sub-menu whose
     // entries are loaded from Discord, or (volume) is changed with D-pad left/right.
     class Item
     {
         public string Text, Icon;
+        public string Sub = "";      // second, smaller line under the text
+        public string Badge = "";    // pill on the right, e.g. an unread count
+        public bool Header;          // section heading: not selectable
+        public bool Wrap;            // Sub wraps over up to three lines (messages)
         public Func<string> Action;
-        public bool CloseAfter, Direct, Quiet;
-        public PlayniteLink.Game Game;   // Home tab: the game this row starts   // Quiet: information row (e.g. a message)
+        public bool CloseAfter, Direct, Quiet;   // Quiet: information row (e.g. a message)
+        public PlayniteLink.Game Game;   // Home tab: the game this row starts (its cover is shown)
         public Func<List<Item>> Submenu;
         public Color? Dot;
         public Func<int, int> Adjust;
@@ -62,6 +67,7 @@ static class PartyPanel
         { "power", "" }, { "game", "" }, { "server", "" }, { "star", "" },
         { "tv", "\uE7F4" }, { "bulb", "\uEA80" }, { "bulboff", "\uE708" }, { "camera", "\uE722" }, { "refresh", "\uE72C" },
         { "closegame", "\uE7FC" }, { "battery", "\uE83F" }, { "batterylow", "\uE850" }, { "wired", "\uE839" },
+        { "settings", "\uE713" }, { "chevron", "\uE76C" }, { "up", "\uE70E" }, { "down", "\uE70D" }, { "info", "\uE946" }, { "voice", "\uE902" },
         { "send", "\uE724" }, { "quote", "\uE8BD" }, { "home", "\uE80F" }, { "library", "\uE8F1" }, { "play", "\uE768" }, { "swap", "\uE8AB" },
     };
     static string iconFont = "Segoe MDL2 Assets";
@@ -88,7 +94,7 @@ static class PartyPanel
             timer.Tick += (s, e) => Tick();
             timer.Start();
             Application.Run();
-        }) { IsBackground = true, Name = "PartyPanel" };
+        }) { IsBackground = true, Name = "Guide" };
         th.SetApartmentState(ApartmentState.STA);
         th.Start();
     }
@@ -148,7 +154,21 @@ static class PartyPanel
 
     public static void Move(int delta)
     {
-        OnUi(() => { if (items.Count == 0) return; selected = (selected + delta + items.Count) % items.Count; panel.Invalidate(); });
+        OnUi(() =>
+        {
+            if (!items.Any(i => !i.Header)) return;
+            do selected = (selected + delta + items.Count) % items.Count; while (items[selected].Header);
+            panel.Invalidate();
+        });
+    }
+
+    // First selectable row at or after i
+    static int Selectable(int i)
+    {
+        i = Math.Max(0, Math.Min(i, items.Count - 1));
+        for (int k = i; k < items.Count; k++) if (!items[k].Header) return k;
+        for (int k = i; k >= 0; k--) if (!items[k].Header) return k;
+        return 0;
     }
 
     // B: back out of a sub-menu, or close from the main menu
@@ -182,7 +202,7 @@ static class PartyPanel
             {
                 if (items != level) return;   // backed out while loading
                 items = loaded.Count > 0 ? loaded : new List<Item> { new Item { Text = "Nothing found" } };
-                selected = 0;
+                selected = Selectable(0);
                 panel.Invalidate();
             });
             return "";
@@ -251,28 +271,31 @@ static class PartyPanel
         else if (tab == LightsTab) LightsItems(list);
         else if (tab == SystemTab) SystemItems(list);
         else PartyItems(list);
-        list.Add(new Item { Text = "Close", Icon = "close" });
         string current = selected < items.Count ? items[selected].Text : null;
         items = list;
-        int keep = current == null ? -1 : items.FindIndex(i => i.Text == current);
-        selected = tab == PartyTab && DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : Math.Max(0, Math.Min(selected, items.Count - 1));
+        int keep = current == null ? -1 : items.FindIndex(i => i.Text == current && !i.Header);
+        selected = Selectable(tab == PartyTab && DiscordBridge.Incoming && current == null ? 0 : keep >= 0 ? keep : selected);
     }
 
     // --- Audio tab: where the sound goes, and how loud ---
     static void AudioItems(List<Item> list)
     {
+        list.Add(Heading("Sound plays on"));
         try
         {
             foreach (var d in CouchKit.OutputDevices())
             {
                 string id = d.Item2, name = d.Item1;
                 bool headset = name.IndexOf("Headset", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Headphone", StringComparison.OrdinalIgnoreCase) >= 0;
-                list.Add(new Item { Text = (d.Item3 ? "" : "Play on ") + ShortDevice(name), Icon = headset ? "headset" : "tv", Dot = d.Item3 ? (Color?)Green : null, Action = () => CouchKit.SetOutput(id, ShortDevice(name)) });
+                list.Add(new Item { Text = ShortDevice(name), Sub = d.Item3 ? "Playing here now" : "Switch the sound here", Icon = headset ? "headset" : "tv", Dot = d.Item3 ? (Color?)Green : null, Action = () => CouchKit.SetOutput(id, ShortDevice(name)) });
             }
         }
         catch (Exception ex) { CouchKit.Log("Guide: audio devices: " + ex.Message); }
+        list.Add(Heading("Volume"));
         foreach (var v in VolumeMenu()) list.Add(v);
     }
+
+    static Item Heading(string text) { return new Item { Text = text, Header = true }; }
 
     // "Headset Earphone (CORSAIR VIRTUOSO SE Wireless Gaming Headset)" -> "CORSAIR VIRTUOSO SE Wireless Gaming Headset"
     static string ShortDevice(string name)
@@ -297,17 +320,20 @@ static class PartyPanel
     {
         if (SmartHome.HasHomeAssistant)
         {
+            list.Add(Heading("Scenes"));
             foreach (var s in SmartHome.Scenes)
             {
                 string entity = s, name;
                 lock (sceneNames) if (!sceneNames.TryGetValue(entity, out name)) name = entity.Substring(entity.IndexOf('.') + 1).Replace('_', ' ');
                 list.Add(new Item { Text = name, Icon = "bulb", Action = () => SmartHome.Activate(entity) });
             }
+            list.Add(Heading("Room"));
             list.Add(new Item { Text = "Room lights on", Icon = "bulb", Action = () => SmartHome.SetRoomLights(true) });
             list.Add(new Item { Text = "Room lights off", Icon = "bulboff", Action = () => SmartHome.SetRoomLights(false) });
         }
-        else list.Add(new Item { Text = "Home Assistant not set up", Icon = "bulb" });
-        list.Add(new Item { Text = Lighting.Off ? "PC lighting on" : "PC lighting off", Icon = Lighting.Off ? "bulb" : "bulboff", Direct = true,
+        else list.Add(new Item { Text = "Home Assistant not set up", Sub = "Add HomeAssistantUrl and a token to couchkit.json", Icon = "bulb", Quiet = true });
+        list.Add(Heading("PC"));
+        list.Add(new Item { Text = Lighting.Off ? "PC lighting on" : "PC lighting off", Sub = Lighting.Off ? "The PC's lights are off" : "Follows the game's colours", Icon = Lighting.Off ? "bulb" : "bulboff", Direct = true,
                             Action = () => { Lighting.Off = !Lighting.Off; ShowMessage(Lighting.Off ? "PC lighting off" : "PC lighting on"); return ""; } });
     }
 
@@ -316,8 +342,8 @@ static class PartyPanel
     {
         var current = PlayniteLink.NowPlaying;
         if (current.Length > 0)
-            list.Add(new Item { Text = "Resume " + current, Icon = "play", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusGame(); }); return ""; } });
-        list.Add(new Item { Text = "Screenshot", Icon = "camera", Direct = true, Action = () =>
+            list.Add(new Item { Text = "Resume game", Sub = current, Icon = "play", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusGame(); }); return ""; } });
+        list.Add(new Item { Text = "Take a screenshot", Sub = "Saved to Pictures\\CouchKit", Icon = "camera", Direct = true, Action = () =>
         {
             Close();
             ThreadPool.QueueUserWorkItem(_ =>
@@ -328,26 +354,28 @@ static class PartyPanel
             });
             return "";
         } });
-        if (current.Length > 0) list.Add(new Item { Text = "Close game", Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
-        foreach (var gm in PlayniteLink.Recent().Where(r => r.Name != current).Take(8))
+        if (current.Length > 0) list.Add(new Item { Text = "Close game", Sub = "Quits " + current, Icon = "closegame", Action = CouchKit.CloseRunningGame, CloseAfter = true });
+        var recent = PlayniteLink.Recent().Where(r => r.Name != current).Take(8).ToList();
+        if (recent.Count > 0) list.Add(Heading(current.Length > 0 ? "Switch to" : "Jump back in"));
+        foreach (var gm in recent)
         {
             var game = gm;
-            string text = game.Name + "  ·  " + (string.IsNullOrEmpty(game.Platform) ? "" : game.Platform + "  ·  ") + PlayniteLink.Hours(game.Playtime);
+            string sub = (string.IsNullOrEmpty(game.Platform) ? "" : game.Platform + "  ·  ") + PlayniteLink.Hours(game.Playtime);
             if (current.Length > 0)
-                list.Add(new Item { Text = text + " ›", Icon = "swap", Game = game, Submenu = () => Confirm("Switch to " + game.Name, () => PlayniteLink.SwitchTo(game)) });
+                list.Add(new Item { Text = game.Name, Sub = sub, Icon = "swap", Game = game, Submenu = () => Confirm("Switch to " + game.Name, () => PlayniteLink.SwitchTo(game)) });
             else
-                list.Add(new Item { Text = text, Icon = "play", Game = game, Action = () => PlayniteLink.Start(game), CloseAfter = true });
+                list.Add(new Item { Text = game.Name, Sub = sub, Icon = "play", Game = game, Action = () => PlayniteLink.Start(game), CloseAfter = true });
         }
-        list.Add(new Item { Text = "Playnite library", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
+        list.Add(new Item { Text = "Playnite library", Sub = "Everything else", Icon = "library", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(300); CouchKit.FocusPlaynite(); }); return ""; } });
     }
 
     // --- System tab ---
     static void SystemItems(List<Item> list)
     {
-        list.Add(new Item { Text = "Turn screen off", Icon = "tv", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(400); CouchKit.ScreenOff(); }); return ""; } });
-        list.Add(new Item { Text = "Restart Playnite ›", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
-        list.Add(new Item { Text = "Restart PC ›", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
-        list.Add(new Item { Text = "Shut down ›", Icon = "power", Submenu = () => Confirm("Shut down", () => { CouchKit.PowerAction(false); return ""; }) });
+        list.Add(new Item { Text = "Turn screen off", Sub = "Any input wakes it", Icon = "tv", Direct = true, Action = () => { Close(); ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(400); CouchKit.ScreenOff(); }); return ""; } });
+        list.Add(new Item { Text = "Restart Playnite", Sub = "If it gets stuck", Icon = "refresh", Submenu = () => Confirm("Restart Playnite", () => { CouchKit.RestartPlaynite(); return ""; }) });
+        list.Add(new Item { Text = "Restart PC", Icon = "refresh", Submenu = () => Confirm("Restart the PC", () => { CouchKit.PowerAction(true); return ""; }) });
+        list.Add(new Item { Text = "Shut down", Icon = "power", Submenu = () => Confirm("Shut down", () => { CouchKit.PowerAction(false); return ""; }) });
     }
 
     static List<Item> Confirm(string what, Func<string> action)
@@ -373,6 +401,7 @@ static class PartyPanel
         }
         if (DiscordBridge.InCall) list.Add(new Item { Text = "Leave call", Icon = "hangup", Action = DiscordBridge.Leave });
         list.Add(new Item { Text = DiscordBridge.Muted ? "Unmute microphone" : "Mute microphone", Icon = DiscordBridge.Muted ? "micoff" : "mic", Action = DiscordBridge.ToggleMute });
+        if (S.Favourites.Length > 0) list.Add(Heading("Favourites"));
         foreach (var f in S.Favourites)
         {
             var fav = f;
@@ -380,15 +409,16 @@ static class PartyPanel
             {
                 string status;
                 lock (DiscordBridge.Statuses) DiscordBridge.Statuses.TryGetValue(fav.Friend, out status);
-                list.Add(new Item { Text = "Call " + (fav.Label ?? fav.Friend), Icon = "call", Dot = StatusColour(status ?? ""), Action = () => DiscordBridge.CallFriend(fav.Friend), CloseAfter = true });
+                list.Add(new Item { Text = "Call " + (fav.Label ?? fav.Friend), Sub = Describe(status ?? "", "", DiscordBridge.Unread(fav.Friend), false), Icon = "call", Dot = StatusColour(status ?? ""), Action = () => DiscordBridge.CallFriend(fav.Friend), CloseAfter = true });
             }
             else if (!string.IsNullOrEmpty(fav.Server) && !string.IsNullOrEmpty(fav.Channel))
-                list.Add(new Item { Text = "Join " + (fav.Label ?? fav.Channel), Icon = "channel", Action = () => DiscordBridge.JoinVoice(fav.Server, fav.Channel), CloseAfter = true });
+                list.Add(new Item { Text = "Join " + (fav.Label ?? fav.Channel), Sub = fav.Channel + "  ·  " + fav.Server, Icon = "channel", Action = () => DiscordBridge.JoinVoice(fav.Server, fav.Channel), CloseAfter = true });
         }
-        list.Add(new Item { Text = "Chats ›", Icon = "chat", Submenu = ChatsMenu });
-        list.Add(new Item { Text = "Voice channels ›", Icon = "server", Submenu = ServersMenu });
+        list.Add(Heading("Discord"));
+        list.Add(new Item { Text = "Chats", Sub = "Messages, calls and quick replies", Icon = "chat", Submenu = ChatsMenu });
+        list.Add(new Item { Text = "Voice channels", Sub = "See who's in, and join", Icon = "voice", Submenu = ServersMenu });
         list.Add(new Item { Text = DiscordBridge.Deafened ? "Undeafen" : "Deafen", Icon = DiscordBridge.Deafened ? "deafened" : "headset", Action = DiscordBridge.ToggleDeafen });
-        list.Add(new Item { Text = "Open Discord (mouse mode)", Icon = "mouse", Direct = true, Action = () => { Close(); EnterMouseMode(); return ""; } });
+        list.Add(new Item { Text = "Open Discord", Sub = "The controller works as a mouse", Icon = "mouse", Direct = true, Action = () => { Close(); EnterMouseMode(); return ""; } });
     }
 
     // Sub-menus, loaded live from Discord on its thread
@@ -397,13 +427,10 @@ static class PartyPanel
         return DiscordBridge.ListChats().Select(c =>
         {
             string name = c.Name;
-            string extra = c.Group ? "  ·  group" + (c.Members > 0 ? " of " + c.Members : "") : c.Status.Length > 0 ? "  ·  " + c.Status.ToLowerInvariant() : "";
             int fresh = DiscordBridge.Unread(name);
-            if (fresh > 0) extra += "  ·  " + fresh + " new";
-            if (c.InCall) extra += "  ·  in a call";
-            else if (c.Activity.Length > 0) extra += "  ·  " + c.Activity;
+            string sub = c.Group ? "Group" + (c.Members > 0 ? " of " + c.Members : "") + (c.InCall ? "  ·  in a call" : "") : Describe(c.Status, c.Activity, 0, c.InCall);
             var chat = c;
-            return new Item { Text = name + extra + " ›", Icon = c.Group ? "people" : "chat", Dot = StatusColour(c.Status), Submenu = () => ChatPage(chat) };
+            return new Item { Text = name, Sub = sub, Badge = fresh > 0 ? fresh.ToString() : "", Icon = c.Group ? "people" : "chat", Dot = StatusColour(c.Status), Submenu = () => ChatPage(chat) };
         }).ToList();
     }
 
@@ -413,13 +440,15 @@ static class PartyPanel
         var list = new List<Item>();
         string name = chat.Name;
         list.Add(new Item { Text = chat.InCall ? "Join the call" : "Call " + name, Icon = "call", Action = () => DiscordBridge.CallFriend(name), CloseAfter = true });
-        list.Add(new Item { Text = "Quick reply ›", Icon = "message", Submenu = () => S.QuickReplies.Select(r =>
+        list.Add(new Item { Text = "Quick reply", Icon = "message", Submenu = () => S.QuickReplies.Select(r =>
         {
             string reply = r;
             return new Item { Text = reply, Icon = "send", Action = () => DiscordBridge.SendMessage(name, reply), CloseAfter = false };
         }).ToList() });
-        foreach (var m in DiscordBridge.ReadMessages(name, 6))
-            list.Add(new Item { Text = (m.Author.Length > 0 ? m.Author + ":  " : "") + m.Text, Icon = "quote", Quiet = true });
+        var messages = DiscordBridge.ReadMessages(name, 6);
+        if (messages.Count > 0) list.Add(Heading("Latest messages"));
+        foreach (var m in messages)
+            list.Add(new Item { Text = m.Author.Length > 0 ? m.Author : "…", Sub = m.Text, Wrap = true, Icon = "quote", Quiet = true });
         return list;
     }
 
@@ -428,7 +457,7 @@ static class PartyPanel
         return DiscordBridge.ListServers().Select(s =>
         {
             string server = s;
-            return new Item { Text = server + " ›", Icon = "server", Submenu = () => ChannelsMenu(server) };
+            return new Item { Text = server, Icon = "server", Submenu = () => ChannelsMenu(server) };
         }).ToList();
     }
 
@@ -437,8 +466,8 @@ static class PartyPanel
         return DiscordBridge.ListVoiceChannels(server).Select(ch =>
         {
             string channel = ch.Name;
-            string who = ch.People.Count == 0 ? "" : "  ·  " + string.Join(", ", ch.People.Take(4)) + (ch.People.Count > 4 ? " +" + (ch.People.Count - 4) : "");
-            return new Item { Text = channel + who, Icon = ch.People.Count > 0 ? "people" : "channel", Action = () => DiscordBridge.JoinVoice(server, channel), CloseAfter = true };
+            string who = ch.People.Count == 0 ? "Empty" : string.Join(", ", ch.People.Take(4)) + (ch.People.Count > 4 ? " +" + (ch.People.Count - 4) : "");
+            return new Item { Text = channel, Sub = who, Badge = ch.People.Count > 0 ? ch.People.Count.ToString() : "", Icon = ch.People.Count > 0 ? "people" : "channel", Action = () => DiscordBridge.JoinVoice(server, channel), CloseAfter = true };
         }).ToList();
     }
 
@@ -452,6 +481,17 @@ static class PartyPanel
         };
         foreach (var i in list) { try { i.Level = i.Adjust(0); } catch { i.Level = -1; } }
         return list;
+    }
+
+    // "Online  ·  Playing Halo" / "Idle  ·  3 new" / "In a call"
+    static string Describe(string status, string activity, int unread, bool inCall)
+    {
+        var parts = new List<string>();
+        if (status.Length > 0) parts.Add(status);
+        if (inCall) parts.Add("in a call");
+        else if (activity.Length > 0) parts.Add(activity);
+        if (unread > 0) parts.Add(unread + " new");
+        return string.Join("  ·  ", parts);
     }
 
     // Discord's own status colours
@@ -576,6 +616,57 @@ static class PartyPanel
         using (var f = new Font(iconFont, size, GraphicsUnit.Pixel)) g.DrawString(glyph, f, brush, x, y);
     }
 
+    // Game covers, loaded once and kept small
+    static readonly Dictionary<string, Image> covers = new Dictionary<string, Image>();
+    static Image Cover(PlayniteLink.Game game)
+    {
+        if (game == null || string.IsNullOrEmpty(game.Cover)) return null;
+        Image img;
+        if (covers.TryGetValue(game.Cover, out img)) return img;
+        try
+        {
+            using (var src = Image.FromFile(game.Cover))
+            {
+                int h = 360, w = Math.Max(1, src.Width * h / Math.Max(1, src.Height));
+                var small = new Bitmap(w, h);
+                using (var g = Graphics.FromImage(small)) { g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(src, 0, 0, w, h); }
+                img = small;
+            }
+        }
+        catch (Exception ex) { CouchKit.Log("Guide: cover " + game.Name + ": " + ex.Message); img = null; }
+        covers[game.Cover] = img;
+        return img;
+    }
+
+    // Cover art cropped to a 3:4 tile with rounded corners
+    static void DrawCover(Graphics g, Image img, RectangleF r, float radius)
+    {
+        var state = g.Save();
+        using (var path = RoundedPath(r, radius)) g.SetClip(path, CombineMode.Intersect);
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        float scale = Math.Max(r.Width / img.Width, r.Height / img.Height);
+        float w = img.Width * scale, h = img.Height * scale;
+        g.DrawImage(img, r.Left + (r.Width - w) / 2, r.Top + (r.Height - h) / 2, w, h);
+        g.Restore(state);
+    }
+
+    static readonly string[] TabIcons = { "home", "people", "volume", "bulb", "settings" };
+
+    // Row heights: headings are short, rows with a second line taller, game rows tall enough for
+    // their cover, and messages grow to fit up to three lines
+    static int RowHeight(Item item, int unit, Font small, Font heading, int width)
+    {
+        if (item.Header) return (int)(unit * 1.7f);
+        if (item.Game != null) return (int)(unit * 3.3f);
+        if (item.Wrap && item.Sub.Length > 0)
+        {
+            int h = TextRenderer.MeasureText(item.Sub, small, new Size(width, 10000), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding).Height;
+            int lines = Math.Max(1, Math.Min(3, (int)Math.Round(h / (double)small.Height)));
+            return (int)(unit * 0.5f + heading.Height * 1.35f + lines * small.Height + unit * 0.6f);
+        }
+        return item.Sub.Length > 0 ? (int)(unit * 2.8f) : (int)(unit * 2.2f);
+    }
+
     static void PaintPanel(Graphics g, Size size)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -583,38 +674,58 @@ static class PartyPanel
         int unit = size.Height / 40;   // scales with the TV's resolution
         using (var accent = new LinearGradientBrush(new Point(0, 0), new Point(0, size.Height), Aqua, Magenta))
             g.FillRectangle(accent, size.Width - unit / 3, 0, unit / 3, size.Height);
-        using (var titleFont = new Font("Segoe UI Semibold", unit * 1.6f, GraphicsUnit.Pixel))
-        using (var body = new Font("Segoe UI", unit * 1.05f, GraphicsUnit.Pixel))
-        using (var bold = new Font("Segoe UI Semibold", unit * 1.05f, GraphicsUnit.Pixel))
-        using (var small = new Font("Segoe UI", unit * 0.75f, GraphicsUnit.Pixel))
+        using (var titleFont = new Font("Segoe UI Semibold", unit * 1.5f, GraphicsUnit.Pixel))
+        using (var body = new Font("Segoe UI", unit * 1.0f, GraphicsUnit.Pixel))
+        using (var bold = new Font("Segoe UI Semibold", unit * 1.0f, GraphicsUnit.Pixel))
+        using (var small = new Font("Segoe UI", unit * 0.72f, GraphicsUnit.Pixel))
+        using (var heading = new Font("Segoe UI Semibold", unit * 0.66f, GraphicsUnit.Pixel))
         using (var text = new SolidBrush(Text))
         using (var dim = new SolidBrush(Dim))
         {
-            var noWrap = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
             int x = unit * 2, y = unit * 2, w = size.Width - x * 2;
-            if (parents.Count == 0)
-            {
-                float tx = x;
-                using (var tabFont = new Font("Segoe UI Semibold", unit * 1.15f, GraphicsUnit.Pixel))
-                    for (int t = 0; t < Tabs.Length; t++)
-                    {
-                        var sz = TextRenderer.MeasureText(Tabs[t], tabFont);
-                        Line(g, Tabs[t], tabFont, t == tab ? Text : Dim, new RectangleF(tx, y + unit * 0.5f, sz.Width + 4, tabFont.Height * 1.3f));
-                        if (t == tab)
-                            using (var bar = new LinearGradientBrush(new RectangleF(tx, 0, sz.Width, 10), Aqua, Magenta, LinearGradientMode.Horizontal))
-                                g.FillRectangle(bar, tx, y + unit * 2.1f, sz.Width, unit / 6f);
-                        tx += sz.Width + unit * 1.1f;
-                    }
-            }
-            else Line(g, title, titleFont, Text, new RectangleF(x, y, w - unit * 4, unit * 2.4f));
-            y += unit * 3;
 
-            // Status card: incoming call, current call, or not in a call
+            // Top bar: tabs as icons, the current one as a pill with its name; the clock on the right
+            string clock = DateTime.Now.ToString("HH:mm");
+            int clockW = TextRenderer.MeasureText(clock, bold).Width;
+            Line(g, clock, bold, Dim, new RectangleF(x + w - clockW, y + unit * 0.45f, clockW + 4, bold.Height * 1.3f));
+            float tx = x - unit * 0.5f, tabH = unit * 2.0f, iconS = unit * 1.05f;
+            for (int t = 0; t < Tabs.Length; t++)
+            {
+                bool on = t == tab;
+                int labelW = on ? TextRenderer.MeasureText(Tabs[t], bold).Width : 0;
+                float tw = on ? unit * 2.6f + labelW + unit * 0.4f : unit * 2.4f;
+                var pill = new RectangleF(tx, y, tw, tabH);
+                if (on)
+                    using (var path = RoundedPath(pill, tabH / 2))
+                    {
+                        using (var fill = new SolidBrush(Card)) g.FillPath(fill, path);
+                        using (var edge = new LinearGradientBrush(pill, Aqua, Magenta, LinearGradientMode.Horizontal))
+                        using (var pen = new Pen(edge, unit / 10f)) g.DrawPath(pen, path);
+                    }
+                using (Brush ib = on ? (Brush)new LinearGradientBrush(new RectangleF(tx, y, unit * 2, unit * 2), Aqua, Magenta, 45f) : new SolidBrush(Dim))
+                    DrawIcon(g, TabIcons[t], tx + unit * 0.75f, y + (tabH - iconS) / 2 - unit * 0.05f, iconS, ib);
+                if (on) Line(g, Tabs[t], bold, Text, new RectangleF(tx + unit * 2.25f, y + (tabH - bold.Height) / 2, labelW + 4, bold.Height * 1.3f));
+                tx += tw + unit * 0.15f;
+            }
+            y += (int)(tabH + unit * 1.0f);
+
+            // In a sub-menu: where you are, then its title
+            if (parents.Count > 0)
+            {
+                string trail = string.Join("  ›  ", parents.Reverse().Select(l => l.Title).ToArray());
+                Line(g, trail.ToUpperInvariant(), heading, Dim, new RectangleF(x, y, w, heading.Height * 1.3f));
+                y += (int)(heading.Height * 1.4f);
+                Line(g, title, titleFont, Text, new RectangleF(x, y, w, titleFont.Height * 1.25f));
+                y += (int)(titleFont.Height * 1.5f);
+            }
+
+            // Status card: Home shows what's playing, Party the call (or the incoming call)
             if (parents.Count == 0 && (tab == PartyTab || tab == HomeTab))
             {
                 bool home = tab == HomeTab, playing = PlayniteLink.Running;
                 var currentGame = home && playing ? PlayniteLink.Current : null;
-                var card = new RectangleF(x - unit / 2, y, w, unit * 3.2f);
+                var cover = Cover(currentGame);
+                var card = new RectangleF(x - unit / 2, y, w + unit, unit * 3.6f);
                 using (var path = RoundedPath(card, unit * 0.6f))
                 {
                     using (var fill = new SolidBrush(!home && DiscordBridge.Incoming ? CardLight : Card)) g.FillPath(fill, path);
@@ -623,80 +734,162 @@ static class PartyPanel
                         using (var pen = new Pen(edge, unit / 8f)) g.DrawPath(pen, path);
                 }
                 string icon = home ? "game" : DiscordBridge.Incoming ? "call" : DiscordBridge.InCall ? "people" : "chat";
-                string line1 = DiscordBridge.Incoming ? (DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Incoming call")
+                string over = home ? (playing ? "NOW PLAYING" : "PLAYNITE") : DiscordBridge.Incoming ? "INCOMING CALL" : DiscordBridge.InCall ? "IN A CALL" : "DISCORD";
+                string line1 = DiscordBridge.Incoming ? (DiscordBridge.IncomingFrom.Length > 0 ? DiscordBridge.IncomingFrom + " is calling" : "Someone's calling")
                              : !DiscordBridge.Running ? "Discord isn't running"
-                             : DiscordBridge.InCall ? "In a call" + (DiscordBridge.CallName.Length > 0 ? ": " + DiscordBridge.CallName : "")
+                             : DiscordBridge.InCall ? (DiscordBridge.CallName.Length > 0 ? DiscordBridge.CallName : "Voice call")
                              : "Not in a call";
                 string line2 = DiscordBridge.InCall ? (DiscordBridge.Muted ? "Microphone muted" : "Microphone live") + (DiscordBridge.Deafened ? "  ·  deafened" : "")
-                             : DiscordBridge.Incoming ? "Press A to answer" : "Pick a friend or channel below";
+                             : DiscordBridge.Incoming ? "Press A to answer" : "Call a friend or join a channel";
                 if (home)
                 {
-                    line1 = playing ? "Now playing: " + PlayniteLink.NowPlaying : "Nothing running";
-                    line2 = currentGame != null ? (string.IsNullOrEmpty(currentGame.Platform) ? "" : currentGame.Platform + "  ·  ") + PlayniteLink.Hours(currentGame.Playtime) : playing ? "" : "Pick something to play below";
+                    line1 = playing ? PlayniteLink.NowPlaying : "Nothing running";
+                    line2 = currentGame != null ? (string.IsNullOrEmpty(currentGame.Platform) ? "" : currentGame.Platform + "  ·  ") + PlayniteLink.Hours(currentGame.Playtime) : playing ? "" : "Pick something to play";
                 }
-                using (var iconBrush = new LinearGradientBrush(new RectangleF(card.Left, card.Top, unit * 3, unit * 3), Aqua, Magenta, 45f))
-                    DrawIcon(g, icon, card.Left + unit * 0.6f, card.Top + unit * 0.7f, unit * 1.6f, iconBrush);
-                Line(g, line1, bold, Text, new RectangleF(card.Left + unit * 3, card.Top + unit * 0.45f, card.Width - unit * 3.5f, bold.Height * 1.2f));
-                Line(g, line2, small, !home && DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(card.Left + unit * 3, card.Top + unit * 1.8f, card.Width - unit * 3.5f, small.Height * 1.2f));
-                y += (int)(unit * 4);
+                float cx = card.Left + unit * 3.1f;
+                if (cover != null)
+                {
+                    float ch = card.Height - unit * 0.8f;
+                    DrawCover(g, cover, new RectangleF(card.Left + unit * 0.4f, card.Top + unit * 0.4f, ch * 0.75f, ch), unit * 0.35f);
+                    cx = card.Left + unit * 0.4f + ch * 0.75f + unit * 0.7f;
+                }
+                else
+                    using (var iconBrush = new LinearGradientBrush(new RectangleF(card.Left, card.Top, unit * 3, unit * 3), Aqua, Magenta, 45f))
+                        DrawIcon(g, icon, card.Left + unit * 0.7f, card.Top + unit * 0.95f, unit * 1.6f, iconBrush);
+                float cw = card.Right - cx - unit * 0.6f;
+                Line(g, over, heading, Aqua, new RectangleF(cx, card.Top + unit * 0.45f, cw, heading.Height * 1.3f));
+                Line(g, line1, bold, Text, new RectangleF(cx, card.Top + unit * 1.15f, cw, bold.Height * 1.25f));
+                Line(g, line2, small, !home && DiscordBridge.InCall && DiscordBridge.Muted ? Red : Dim, new RectangleF(cx, card.Top + unit * 2.45f, cw, small.Height * 1.25f));
+                y += (int)(card.Height + unit * 0.7f);
             }
 
-            int rowH = (int)(unit * 2.2), step = rowH + unit / 4;
-            // Scroll so the selection stays visible; leave room for the message and button hints
-            int visible = Math.Max(1, (size.Height - y - unit * 5) / step);
+            // Rows. Scroll so the selection (and the heading just above it) stays in view, leaving
+            // room for the message and the button hints.
+            int bottom = size.Height - unit * 5, gap = unit / 5;
+            int textW = w - (int)(unit * 2.9f);
+            var heights = items.Select(i => RowHeight(i, unit, small, heading, textW)).ToList();
             if (selected < firstVisible) firstVisible = selected;
-            if (selected >= firstVisible + visible) firstVisible = selected - visible + 1;
-            if (firstVisible > 0) g.DrawString("▲", small, dim, size.Width - x * 2, y - unit * 1.2f);
-            for (int i = firstVisible; i < items.Count && i < firstVisible + visible; i++)
+            if (firstVisible == selected && selected > 0 && items[selected - 1].Header) firstVisible = selected - 1;
+            Func<int, int, int> span = (from, to) => { int sum = 0; for (int k = from; k <= to && k < heights.Count; k++) sum += heights[k] + gap; return sum; };
+            while (firstVisible < selected && span(firstVisible, selected) > bottom - y) firstVisible++;
+            if (firstVisible > 0) DrawIcon(g, "up", x + w - unit * 0.6f, y - unit * 0.9f, unit * 0.7f, dim);
+            int last = firstVisible - 1;
+            for (int i = firstVisible; i < items.Count && y + heights[i] <= bottom; i++)
             {
+                last = i;
                 var item = items[i];
+                int rowH = heights[i];
+                if (item.Header)
+                {
+                    Line(g, item.Text.ToUpperInvariant(), heading, Dim, new RectangleF(x, y + rowH - heading.Height * 1.35f, w, heading.Height * 1.3f));
+                    y += rowH + gap;
+                    continue;
+                }
                 bool sel = i == selected;
-                var r = new Rectangle(x - unit / 2, y, w, rowH);
+                var r = new Rectangle(x - unit / 2, y, w + unit, rowH);
                 if (sel)
                 {
                     using (var path = RoundedPath(r, unit * 0.5f))
-                    using (var card = new SolidBrush(Card)) g.FillPath(card, path);
+                    {
+                        using (var card = new SolidBrush(Card)) g.FillPath(card, path);
+                        using (var edge = new Pen(Color.FromArgb(70, Aqua), unit / 14f)) g.DrawPath(edge, path);
+                    }
                     using (var edge = new LinearGradientBrush(r, Aqua, Magenta, LinearGradientMode.Vertical)) g.FillRectangle(edge, r.Left, r.Top + unit / 3, unit / 5, r.Height - unit * 2 / 3);
                 }
                 int textX = x + unit / 2;
-                using (var iconBrush = new SolidBrush(sel ? Text : Dim))
-                    DrawIcon(g, item.Icon, textX, y + (rowH - unit * 1.1f) / 2, unit * 1.1f, item.Icon == "decline" || item.Icon == "hangup" ? new SolidBrush(Red) : item.Icon == "accept" ? new SolidBrush(Green) : (Brush)iconBrush);
-                if (item.Icon != null) textX += (int)(unit * 1.9f);
-                if (item.Dot.HasValue)
+                var cover = Cover(item.Game);
+                if (cover != null)
                 {
-                    int d = (int)(unit * 0.6);
-                    using (var dot = new SolidBrush(item.Dot.Value)) g.FillEllipse(dot, textX, y + (rowH - d) / 2, d, d);
-                    textX += d + unit / 2;
+                    float ch = rowH - unit * 0.6f;
+                    DrawCover(g, cover, new RectangleF(textX, y + unit * 0.3f, ch * 0.75f, ch), unit * 0.25f);
+                    textX += (int)(ch * 0.75f + unit * 0.7f);
                 }
-                int textRight = r.Right - unit / 2;
+                else if (item.Icon != null)
+                {
+                    float iy = item.Wrap ? y + unit * 0.55f : y + (rowH - unit * 1.1f) / 2;
+                    Brush ib = item.Icon == "decline" || item.Icon == "hangup" ? new SolidBrush(Red) : item.Icon == "accept" ? new SolidBrush(Green)
+                             : sel ? (Brush)new LinearGradientBrush(new RectangleF(textX, y, unit * 1.2f, rowH), Aqua, Magenta, 45f) : new SolidBrush(Dim);
+                    DrawIcon(g, item.Icon, textX, iy, unit * 1.1f, ib);
+                    ib.Dispose();
+                    textX += (int)(unit * 1.9f);
+                }
+                int textRight = r.Right - unit;
+                if (item.Submenu != null)
+                {
+                    using (var cb = new SolidBrush(sel ? Text : Dim)) DrawIcon(g, "chevron", textRight - unit * 0.6f, y + (rowH - unit * 0.75f) / 2, unit * 0.75f, cb);
+                    textRight -= (int)(unit * 1.2f);
+                }
+                if (item.Badge.Length > 0)
+                {
+                    int bw = Math.Max(TextRenderer.MeasureText(item.Badge, heading).Width + unit / 2, (int)(unit * 1.15f)), bh = (int)(unit * 1.15f);
+                    var pill = new RectangleF(textRight - bw, y + (rowH - bh) / 2f, bw, bh);
+                    using (var path = RoundedPath(pill, bh / 2f))
+                    using (var fill = new LinearGradientBrush(pill, Magenta, Color.FromArgb(170, 62, 152), LinearGradientMode.Horizontal)) g.FillPath(fill, path);
+                    var bs = TextRenderer.MeasureText(item.Badge, heading);
+                    Line(g, item.Badge, heading, Color.White, new RectangleF(pill.Left + (bw - bs.Width) / 2f, pill.Top + (bh - heading.Height) / 2f, bs.Width + 4, heading.Height * 1.3f));
+                    textRight -= bw + unit / 2;
+                }
                 if (item.Level >= -1)
                 {
                     // Volume bar on the right: palette gradient for the level, or "not playing"
-                    int barW = r.Width * 40 / 100, barH = unit / 2, barX = r.Right - barW - unit, barY = y + (rowH - barH) / 2;
+                    int barW = r.Width * 36 / 100, barH = unit / 2, barX = r.Right - barW - unit, barY = y + (rowH - barH) / 2;
                     textRight = barX - unit / 2;
-                    if (item.Level < 0) g.DrawString("not playing", small, dim, barX, y + (rowH - small.Height) / 2);
+                    if (item.Level < 0) Line(g, "not playing", small, Dim, new RectangleF(barX, y + (rowH - small.Height) / 2, barW, small.Height * 1.3f));
                     else
                     {
-                        using (var track = new SolidBrush(Color.FromArgb(60, 255, 255, 255))) g.FillRectangle(track, barX, barY, barW, barH);
+                        using (var track = new SolidBrush(Color.FromArgb(60, 255, 255, 255)))
+                        using (var tp = RoundedPath(new RectangleF(barX, barY, barW, barH), barH / 2f)) g.FillPath(track, tp);
                         int fill = barW * item.Level / 100;
-                        if (fill > 0) using (var lvl = new LinearGradientBrush(new Rectangle(barX, barY, barW, barH), Aqua, Magenta, LinearGradientMode.Horizontal)) g.FillRectangle(lvl, barX, barY, fill, barH);
-                        g.DrawString(item.Level + "%", small, sel ? text : dim, barX - unit * 2.6f, y + (rowH - small.Height) / 2);
-                        textRight = (int)(barX - unit * 2.8f);
+                        if (fill > barH)
+                            using (var lvl = new LinearGradientBrush(new Rectangle(barX, barY, barW, barH), Aqua, Magenta, LinearGradientMode.Horizontal))
+                            using (var lp = RoundedPath(new RectangleF(barX, barY, fill, barH), barH / 2f)) g.FillPath(lvl, lp);
+                        string pct = item.Level + "%";
+                        int pw = TextRenderer.MeasureText(pct, small).Width;
+                        Line(g, pct, small, sel ? Text : Dim, new RectangleF(barX - unit * 0.5f - pw, y + (rowH - small.Height) / 2, pw + 4, small.Height * 1.3f));
+                        textRight = (int)(barX - unit * 3f);
                     }
                 }
-                Line(g, item.Text, body, sel ? Text : Dim, new RectangleF(textX, y + (rowH - body.Height) / 2, textRight - textX, body.Height * 1.3f));
-                y += step;
+                if (item.Dot.HasValue)
+                {
+                    // Status dot just after the name
+                    int d = (int)(unit * 0.5);
+                    float ty = item.Sub.Length > 0 ? y + rowH / 2f - body.Height * 0.95f : y + (rowH - body.Height) / 2f;
+                    int nameW = Math.Min(TextRenderer.MeasureText(item.Text, sel ? bold : body).Width, textRight - textX - d - unit);
+                    using (var dot = new SolidBrush(item.Dot.Value)) g.FillEllipse(dot, textX + nameW + unit * 0.4f, ty + (body.Height - d) / 2f + unit * 0.05f, d, d);
+                }
+                Color main = item.Quiet ? Dim : sel ? Text : Color.FromArgb(205, 205, 222);
+                if (item.Wrap)
+                {
+                    Line(g, item.Text, heading, Aqua, new RectangleF(textX, y + unit * 0.5f, textRight - textX, heading.Height * 1.3f));
+                    var box = new Rectangle(textX, (int)(y + unit * 0.5f + heading.Height * 1.35f), textRight - textX, rowH - (int)(unit * 0.5f + heading.Height * 1.35f));
+                    TextRenderer.DrawText(g, item.Sub, small, box, sel ? Text : Color.FromArgb(205, 205, 222),
+                        TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.Top);
+                }
+                else if (item.Sub.Length > 0)
+                {
+                    Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + rowH / 2f - body.Height * 0.95f, textRight - textX, body.Height * 1.3f));
+                    Line(g, item.Sub, small, Dim, new RectangleF(textX, y + rowH / 2f + unit * 0.12f, textRight - textX, small.Height * 1.3f));
+                }
+                else Line(g, item.Text, sel ? bold : body, main, new RectangleF(textX, y + (rowH - body.Height) / 2, textRight - textX, body.Height * 1.3f));
+                y += rowH + gap;
             }
-            if (firstVisible + visible < items.Count) g.DrawString("▼", small, dim, size.Width - x * 2, y);
-            if (message.Length > 0) Line(g, message, small, Dim, new RectangleF(x, size.Height - unit * 4.2f, w, unit * 1.4f));
+            if (last < items.Count - 1) DrawIcon(g, "down", x + w - unit * 0.6f, y - unit * 0.1f, unit * 0.7f, dim);
+
+            // Footer: the result of the last action, button hints, controller battery
+            if (message.Length > 0)
+            {
+                using (var mb = new LinearGradientBrush(new RectangleF(x, 0, unit * 1.2f, 10), Aqua, Magenta, LinearGradientMode.Horizontal))
+                    DrawIcon(g, "info", x, size.Height - unit * 4.1f, unit * 0.8f, mb);
+                Line(g, message, small, Text, new RectangleF(x + unit * 1.2f, size.Height - unit * 4.1f, w - unit * 1.2f, unit * 1.4f));
+            }
+            using (var sep = new Pen(Color.FromArgb(40, 255, 255, 255), Math.Max(1, unit / 20f))) g.DrawLine(sep, x, size.Height - unit * 3.4f, x + w, size.Height - unit * 3.4f);
             bool adjustable = selected < items.Count && items[selected].Adjust != null;
-            float hy = size.Height - unit * 2.9f, hs = unit * 1.3f, hx = x;
+            float hy = size.Height - unit * 2.6f, hs = unit * 1.25f, hx = x;
             if (adjustable) hx = Hint(g, "◀▶", Text, "volume", small, hx, hy, hs);
-            else hx = Hint(g, "A", Green, "select", small, hx, hy, hs);
-            hx = Hint(g, "B", Red, "back", small, hx, hy, hs);
+            else if (selected < items.Count && !items[selected].Quiet) hx = Hint(g, "A", Green, "select", small, hx, hy, hs);
+            hx = Hint(g, "B", Red, parents.Count > 0 ? "back" : "close", small, hx, hy, hs);
             hx = Hint(g, "LB", Dim, "", small, hx, hy, hs) - hs * 0.7f;
             hx = Hint(g, "RB", Dim, "tabs", small, hx, hy, hs);
-            // Controller battery, bottom-right
             if (battery.Length > 0)
             {
                 bool low = battery == "Low" || battery == "Empty";
@@ -707,7 +900,6 @@ static class PartyPanel
                 Line(g, label, small, low ? Red : Dim, new RectangleF(bx, hy + (hs - small.Height) / 2, lw + 4, small.Height * 1.3f));
                 using (var bb = new SolidBrush(low ? Red : Dim)) DrawIcon(g, key, bx - unit * 1.6f, hy + (hs - unit * 1.1f) / 2, unit * 1.1f, bb);
             }
-
         }
     }
 
@@ -773,7 +965,7 @@ static class PartyPanel
         DiscordBridge.Running = true; DiscordBridge.InCall = true; DiscordBridge.CallName = "General / Charlton Home";
         lock (DiscordBridge.Statuses) foreach (var f in S.Favourites) if (!string.IsNullOrEmpty(f.Friend)) DiscordBridge.Statuses[f.Friend] = "Online";
         Rebuild();
-        selected = 1;
+        selected = Selectable(1);
         Action<string, int, int, Action<Graphics, Size>> render = (name, w, h, paint) =>
         {
             using (var bmp = new Bitmap(w, h))
@@ -802,6 +994,33 @@ static class PartyPanel
         render("banner.png", 1766, 259, PaintBanner);
         items.Clear(); Rebuild(); selected = 0;
         render("panel-incoming.png", 1305, 2160, PaintPanel);
+        // Sub-menus with made-up chats and messages
+        DiscordBridge.Incoming = false; tab = PartyTab;
+        parents.Clear(); parents.Push(new Level { Title = "Party", Items = items, Selected = 0 });
+        title = "Chats";
+        items = new List<Item>
+        {
+            new Item { Text = "Matt", Sub = "Online  ·  Playing Call of Duty", Badge = "2", Icon = "chat", Dot = Green, Submenu = () => null },
+            new Item { Text = "Sam", Sub = "Idle", Icon = "chat", Dot = StatusColour("Idle"), Submenu = () => null },
+            new Item { Text = "Saturday squad", Sub = "Group of 5  ·  in a call", Icon = "people", Submenu = () => null },
+            new Item { Text = "Alex", Sub = "Offline", Icon = "chat", Dot = StatusColour("Offline"), Submenu = () => null },
+        };
+        selected = 0;
+        render("panel-chats.png", 1305, 2160, PaintPanel);
+        parents.Push(new Level { Title = "Chats", Items = items, Selected = 0 });
+        title = "Matt";
+        items = new List<Item>
+        {
+            new Item { Text = "Call Matt", Icon = "call", Action = () => "" },
+            new Item { Text = "Quick reply", Icon = "message", Submenu = () => null },
+            Heading("Latest messages"),
+            new Item { Text = "Matt", Sub = "You on tonight? Thinking a few rounds of the new map then maybe some Gears if we've still got the energy for it", Wrap = true, Icon = "quote", Quiet = true },
+            new Item { Text = "Dan", Sub = "Yeah, give me 20 mins", Wrap = true, Icon = "quote", Quiet = true },
+            new Item { Text = "Matt", Sub = "👍", Wrap = true, Icon = "quote", Quiet = true },
+        };
+        selected = 3;
+        render("panel-chat.png", 1305, 2160, PaintPanel);
+        parents.Clear();
     }
 
     // For showing how it looks: CouchKit.exe --demo <folder> <background image> renders a scripted

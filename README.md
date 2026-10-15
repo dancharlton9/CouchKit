@@ -25,21 +25,30 @@ CouchKit is a single small background app with no window. Each feature can be sw
 - Sends the running game's colours to a **webhook**, for example a Home Assistant automation, so the room's lights can match the game and go back afterwards.
 - Plays a **flowing animation in the game's colours on Nanoleaf panels**, then puts back whatever they were showing.
 
+**The Guide: an Xbox-style guide on the TV**
+
+![The Guide](docs/party-demo.gif)
+
+*The Guide, call banner and corner HUD over a game ([full-quality video](docs/party-demo.mp4)).*
+
+**Double-tap the Xbox button** to open the Guide over whatever is running. **LB/RB** switch tabs, the D-pad moves, **A** selects and **B** goes back.
+- **Home:** what's playing (with its cover), **Resume**, **Take a screenshot** (to PicturesCouchKit), **Close game**, and your recently played games from Playnite with cover art. Pick one to start it, or, while something is running, to **switch** to it: CouchKit closes the current game and starts the new one through Playnite.
+- **Party** (Discord, optional): see below.
+- **Audio:** choose where sound plays (TV or headset), and a volume mixer for the game, Discord and everything, adjusted with D-pad left/right.
+- **Lights:** Home Assistant scenes, room lights on/off, and PC lighting on/off.
+- **System:** turn the screen off, restart Playnite, restart or shut down the PC (each asks first).
+
+The footer shows the controller's battery, and a warning pops up when it runs low.
+
 **Party: Discord from the controller** (optional)
 
-![Party panel demo](docs/party-demo.gif)
-
-*The Party panel, call banner and corner HUD over a game ([full-quality video](docs/party-demo.mp4)).*
-
 Discord has no console-style "transfer call" for PCs, so CouchKit drives the Discord desktop app through Windows accessibility, the same way a screen reader does, while Discord stays minimised behind Playnite or the game. Nothing extra is installed in Discord.
-- **Double-tap the Xbox button** to open the **Party panel**, an Xbox-guide-style menu on the TV:
-  - **Status card:** your current call with its name and microphone state, or who's calling.
-  - **Favourites:** call a friend or join a voice channel in one press. Friends show their online status.
-  - **Chats:** your recent DMs and group chats, read live from Discord, with status and unread counts. Calling a group chat rings everyone.
-  - **Voice channels:** pick a server, then a channel.
-  - **Volume:** game, Discord and everything, adjusted with D-pad left/right.
-  - Mute, deafen, leave, and **Open Discord** in **mouse mode** (left stick moves the pointer, A clicks, B right-clicks, right stick scrolls).
-- **Incoming calls** show a banner on the TV and buzz the controller. **Tap** the Xbox button and the panel opens with **Answer** selected.
+- **Status card:** your current call with its name and microphone state, or who's calling.
+- **Favourites:** call a friend or join a voice channel in one press. Friends show their online status.
+- **Chats:** your recent DMs and group chats, read live from Discord, with status, what they're playing and unread counts. Open one to see its latest messages, call it (or join its call), or send a **quick reply**. Calling a group chat rings everyone.
+- **Voice channels:** pick a server, then a channel, and see who's in each one.
+- Mute, deafen, leave, and **Open Discord** in **mouse mode** (left stick moves the pointer, A clicks, B right-clicks, right stick scrolls).
+- **Incoming calls** show a banner on the TV and buzz the controller. **Tap** the Xbox button and the Guide opens with **Answer** selected.
 - **Corner HUD:** a brief top-right message when you connect or hang up, mute or unmute, or get new DMs. It never takes focus from the game.
 - **Mute** is Discord's own mute, not the Windows microphone, so in-game voice chat isn't affected.
 - There are **no button combos**: Playnite and games see every normal button, so anything held together with them would leak through.
@@ -51,9 +60,9 @@ Discord has no console-style "transfer call" for PCs, so CouchKit drives the Dis
 
 | Press | Does |
 |---|---|
-| Xbox button (tap) | Switch between the game and Playnite. While a call is ringing, open the panel to answer |
-| Xbox button (double-tap) | Party panel, or leave mouse mode |
-| In the panel | D-pad moves, left/right changes volume, A selects, B goes back |
+| Xbox button (tap) | Switch between the game and Playnite. While a call is ringing, open the Guide to answer |
+| Xbox button (double-tap) | The Guide, or leave mouse mode |
+| In the Guide | LB/RB change tab, D-pad moves, left/right changes volume, A selects, B goes back |
 | Hold Back + Start | Close the game (keep holding to force-close) |
 
 ## Requirements
@@ -114,8 +123,8 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Controller.CloseHoldMs` / `KillHoldMs` | `1500` / `4000` | How long to hold Back + Start to close / force-close the game |
 | `Controller.GuideButton` | `true` | Tap the Xbox button to switch between the game and Playnite |
 | `Controller.GuideTapMaxMs` | `500` | Longer presses are left to Windows |
-| `Controller.DiscordButtons` | `true` | The Party panel (double-tap the Xbox button) |
-| `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Mouse mode (from the Party panel), and the pointer's top speed in pixels per 30 ms |
+| `Controller.DiscordButtons` | `true` | The Guide (double-tap the Xbox button) |
+| `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Mouse mode (from the Guide's Party tab), and the pointer's top speed in pixels per 30 ms |
 | `Display.KeepPlayniteOnTv` | `true` | Keep Playnite off the streaming display |
 | `Display.KeepGameOnTv` | `true` | Keep the running game off the streaming display |
 | `Display.MuteWhileStreaming` | `true` | Mute Playnite and the game while a stream is connected |
@@ -124,8 +133,9 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Display.VirtualDisplayNames` | `Virtual`, `SudoMaker`, `IddSample`, `Parsec` | A display adapter whose name contains one of these counts as a streaming display |
 | `Audio.TvDeviceName` | empty (off) | Part of the TV's name in Windows' sound settings, for example `LG TV`. Sound is switched back to it when the TV is the only screen |
 | `Audio.HeadsetDeviceName` | empty (off) | Part of a headset's name, for example `VIRTUOSO`. While it's connected, it becomes the default speaker and microphone instead of the TV |
-| `Discord.Enabled` | `true` | The Party panel and Discord controls |
-| `Discord.Favourites` | none | Party panel entries. A friend: `{"Label": "My brother", "Friend": "their name as shown in Discord's DM list"}`. A voice channel: `{"Label": "Gaming", "Server": "Server name", "Channel": "General"}`. Friends must have a recent DM, so they appear in Discord's direct messages list |
+| `Discord.Enabled` | `true` | The Guide's Party tab and Discord controls |
+| `Discord.Favourites` | none | Party tab entries. A friend: `{"Label": "My brother", "Friend": "their name as shown in Discord's DM list"}`. A voice channel: `{"Label": "Gaming", "Server": "Server name", "Channel": "General"}`. Friends must have a recent DM, so they appear in Discord's direct messages list |
+| `Discord.QuickReplies` | five short replies | The messages offered under **Quick reply** on a chat's page |
 | `Games.EmulatorFolders` | none | Folders your emulators run from. Emulated games don't run from their "install folder", so this is how CouchKit finds them |
 | `Games.ProtectedProcesses` | none | Extra programs never treated as the game, for example `["MyLauncher"]` |
 | `Lighting.Enabled` | `true` | Lighting through OpenRGB |
@@ -140,6 +150,9 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `SmartHome.WebhookUrl` | empty (off) | URL that receives a POST when a game starts, `{"event":"game_start","game":"<name>","colors":[[r,g,b],...]}`, and when it stops, `{"event":"game_stop"}` |
 | `SmartHome.NanoleafHost` / `NanoleafToken` | empty (off) | IP address and API token of Nanoleaf panels to animate in the game's colours. See below for getting a token |
 | `SmartHome.NanoleafTransitionTime` | `24` | Speed of the Nanoleaf flow, in tenths of a second per step |
+| `SmartHome.HomeAssistantUrl` / `HomeAssistantToken` | empty (off) | Home Assistant address (for example `http://homeassistant.local:8123`) and a long-lived access token (your profile → Security), for the Guide's **Lights** tab |
+| `SmartHome.LightScenes` | none | Scenes or scripts listed on the Lights tab, for example `["scene.movie", "script.party"]` |
+| `SmartHome.RoomLights` | none | Lights switched by **Room lights on/off**, for example `["light.ceiling", "light.lamp"]` |
 
 To see what colours a game's art would produce, run `CouchKit.exe --palette "path\to\image.jpg"`. The result goes to `%APPDATA%\CouchKit\palette-test.txt`.
 
@@ -161,7 +174,7 @@ When a game starts, the add-on writes its install folder to `%APPDATA%\CouchKit\
 
 ## Development
 
-- `CouchKit.exe --preview <folder>` draws the Party panel, banner and HUD to PNGs at 4K, for checking the design.
+- `CouchKit.exe --preview <folder>` draws the Guide (every tab), banner and HUD to PNGs at 4K, for checking the design.
 - `CouchKit.exe --demo <folder> <image>` renders the scripted demo above as 1080p30 PNG frames. Encode with `ffmpeg -framerate 30 -i <folder>\f%04d.png -c:v libx264 -pix_fmt yuv420p demo.mp4`.
 
 ## Building

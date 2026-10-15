@@ -72,9 +72,9 @@ class ControllerSettings
     public int KillHoldMs { get; set; }       // ...this long: force it closed
     public bool GuideButton { get; set; }     // tap the Xbox button to switch between the game and Playnite
     public int GuideTapMaxMs { get; set; }    // longer holds are left to Windows
-    public bool MouseMode { get; set; }       // "Open Discord (mouse mode)" in the Party panel: controller as mouse
+    public bool MouseMode { get; set; }       // "Open Discord (mouse mode)" in the Guide: controller as mouse
     public double MouseSpeed { get; set; }    // pointer pixels per 30 ms at full tilt
-    public bool DiscordButtons { get; set; }  // double-tap the Xbox button for the Party panel (Discord calls, mute, answer, hang up)
+    public bool DiscordButtons { get; set; }  // double-tap the Xbox button for the Guide (Discord calls, mute, answer, hang up)
 
     public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; }
 }
@@ -161,7 +161,7 @@ class SmartHomeSettings
 class DiscordSettings
 {
     public bool Enabled { get; set; }
-    // Shown in the Party panel (double-tap the Xbox button). Either a friend: {"Label":"Our kid","Friend":"UncleChopChopz"}
+    // Shown in the Guide (double-tap the Xbox button). Either a friend: {"Label":"Our kid","Friend":"UncleChopChopz"}
     // (their name as it appears in Discord's direct messages list), or a voice channel:
     // {"Label":"Gaming","Server":"Charlton Home","Channel":"General"}.
     public DiscordFavourite[] Favourites { get; set; }

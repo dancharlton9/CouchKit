@@ -51,6 +51,7 @@
   },
   "Discord": {
     "Enabled": true,
-    "Favourites": []
+    "Favourites": [],
+    "QuickReplies": [ "On my way", "Give me 5 mins", "In a game – call me?", "Can't talk right now", "👍" ]
   }
 }

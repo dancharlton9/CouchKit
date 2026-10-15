@@ -8,7 +8,7 @@
 //                       1.5s -> polite close, short rumble; 4s -> force-kill, long rumble.
 //                       Playnite, Explorer, Steam and Apollo are never touched.
 //   Tap Xbox button     game -> Playnite library; anything else -> the running game, or Playnite.
-//   Double-tap Xbox button   Party panel: Discord calls, mute, answer, hang up, mouse mode (PartyPanel.cs).
+//   Double-tap Xbox button   The Guide: games, Discord party, audio, lights, system (GuidePanel.cs).
 //
 // TV vs virtual display (a stream makes the host's virtual display primary):
 //   - Playnite is kept on the TV, or minimised while no physical screen is active.
@@ -306,7 +306,7 @@ static class CouchKit
         int GetMasterVolumeLevelScalar(out float level);
     }
 
-    // --- Volume mixer (Party panel → Volume) ---
+    // --- Volume mixer (Guide → Audio) ---
     // Each returns the volume as a percentage after changing it by delta (0 = just read it), or -1
     // if there's nothing to control (no game running, Discord silent or closed).
 
@@ -528,14 +528,15 @@ static class CouchKit
             string note;
             var ds = Settings.Load(out note);
             SmartHome.Start(ds.SmartHome, ds.Lighting);
-            PartyPanel.Demo(ds.Discord, args[1], args[2]);
+            GuidePanel.Demo(ds.Discord, args[1], args[2]);
             return;
-        }        if (args.Length > 1 && args[0] == "--preview")   // design check: Party panel, banner and HUD as PNGs
+        }
+        if (args.Length > 1 && args[0] == "--preview")   // design check: the Guide, banner and HUD as PNGs
         {
             string note;
             var ps = Settings.Load(out note);
             SmartHome.Start(ps.SmartHome, ps.Lighting);
-            PartyPanel.Preview(ps.Discord, args[1]);
+            GuidePanel.Preview(ps.Discord, args[1]);
             return;
         }        if (args.Length > 1 && args[0] == "--palette")   // test: palettes picked from the given images
         {
@@ -557,7 +558,7 @@ static class CouchKit
                 Lighting.Start(S.Lighting);
             }
             DiscordBridge.Start(S.Discord);
-            PartyPanel.Start(S.Discord);
+            GuidePanel.Start(S.Discord);
             SmartHome.Log = Log;
             SmartHome.Start(S.SmartHome, S.Lighting);
 
@@ -588,8 +589,8 @@ static class CouchKit
                     XState s;
                     bool connected = XInputGetState(i, out s) == 0;
 
-                    // Xbox button: a tap switches game/Playnite (or closes the Party panel); a double tap
-                    // opens the Party panel (or leaves mouse mode). A single tap waits briefly to be sure.
+                    // Xbox button: a tap switches game/Playnite (or closes the Guide); a double tap
+                    // opens the Guide (or leaves mouse mode). A single tap waits briefly to be sure.
                     bool guide = connected && (s.Pad.Buttons & Guide) != 0;
                     if (guide && guideHeld[i] == null) guideHeld[i] = Stopwatch.StartNew();
                     else if (!guide && guideHeld[i] != null)
@@ -609,8 +610,8 @@ static class CouchKit
                         pendingTap[i] = null;
                         try
                         {
-                            if (PartyPanel.IsOpen) PartyPanel.Close();
-                            else if (DiscordBridge.Incoming && S.Controller.DiscordButtons) PartyPanel.Open();   // ringing: tap, then A answers
+                            if (GuidePanel.IsOpen) GuidePanel.Close();
+                            else if (DiscordBridge.Incoming && S.Controller.DiscordButtons) GuidePanel.Open();   // ringing: tap, then A answers
                             else if (S.Controller.GuideButton) ToggleGameAndPlaynite();
                         }
                         catch (Exception ex) { Log("Xbox button action failed: " + ex.Message); }

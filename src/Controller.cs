@@ -1,7 +1,7 @@
 // Controller extras for Discord and desktop apps from the couch. No button combos: Playnite and
 // games see every normal button, so anything held with them would leak through (Y opens Playnite's
 // search keyboard, Back its menu). Instead:
-//   Double-tap the Xbox button   open/close the Party panel (CouchKit.cs detects the double tap).
+//   Double-tap the Xbox button   open/close the Guide (CouchKit.cs detects the double tap).
 //                                It takes the focus, so D-pad/A/B go to the panel and nothing else.
 //   Mouse mode (started from the panel): left stick moves the pointer, A clicks, B right-clicks,
 //                                right stick scrolls; double-tap the Xbox button to leave it.
@@ -21,15 +21,15 @@ static class PadExtras
 
     static PadExtras()
     {
-        PartyPanel.EnterMouseMode = () => { ShowDiscord(); mouseMode = true; CouchKit.Log("Mouse mode on"); };
+        GuidePanel.EnterMouseMode = () => { ShowDiscord(); mouseMode = true; CouchKit.Log("Mouse mode on"); };
     }
 
-    // Double tap of the Xbox button: leaves mouse mode, otherwise opens/closes the Party panel
+    // Double tap of the Xbox button: leaves mouse mode, otherwise opens/closes the Guide
     public static void DoubleTap(int pad, ControllerSettings s)
     {
         if (mouseMode) { mouseMode = false; CouchKit.Log("Mouse mode off"); CouchKit.Rumble(pad, 60); return; }
         if (!s.DiscordButtons) return;
-        PartyPanel.Toggle();
+        GuidePanel.Toggle();
         CouchKit.Rumble(pad, 60);
     }
 
@@ -43,17 +43,17 @@ static class PadExtras
         last[pad] = buttons;
         Func<ushort, bool> pressed = b => (buttons & b) != 0 && (was & b) == 0;
 
-        // The Party panel has the focus while it's open: it takes the D-pad, A and B
-        if (PartyPanel.IsOpen)
+        // The Guide has the focus while it's open: it takes the D-pad, A and B
+        if (GuidePanel.IsOpen)
         {
-            if (pressed(Up)) PartyPanel.Move(-1);
-            if (pressed(Down)) PartyPanel.Move(1);
-            if (pressed(Left)) PartyPanel.Adjust(-1);
-            if (pressed(Right)) PartyPanel.Adjust(1);
-            if (pressed(LB)) PartyPanel.Tab(-1);
-            if (pressed(RB)) PartyPanel.Tab(1);
-            if (pressed(A)) PartyPanel.Select();
-            if (pressed(B)) PartyPanel.GoBack();
+            if (pressed(Up)) GuidePanel.Move(-1);
+            if (pressed(Down)) GuidePanel.Move(1);
+            if (pressed(Left)) GuidePanel.Adjust(-1);
+            if (pressed(Right)) GuidePanel.Adjust(1);
+            if (pressed(LB)) GuidePanel.Tab(-1);
+            if (pressed(RB)) GuidePanel.Tab(1);
+            if (pressed(A)) GuidePanel.Select();
+            if (pressed(B)) GuidePanel.GoBack();
             return;
         }
 

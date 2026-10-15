@@ -1,7 +1,7 @@
 // Discord: drives the Discord desktop app through Windows accessibility (UI Automation), the same
 // way a screen reader does, so calls can be joined, muted and left from the controller while
 // Discord stays minimised behind Playnite or the game. Discord offers no supported API for this.
-// Everything runs on one background thread; the controller and the Party panel queue requests and
+// Everything runs on one background thread; the controller and the Guide queue requests and
 // read the cached state (in a call, muted, deafened, incoming call).
 // Relies on Discord's accessible names ("Mute", "Start Voice Call", "<name> (direct message)",
 // "<channel> (voice channel)"); a Discord redesign may need these updating.
@@ -23,7 +23,7 @@ static class DiscordBridge
     public static volatile string CallingTo = "";          // outgoing call just started (for the "Calling…" banner)
     public static DateTime CallingSince = DateTime.MinValue;
     public static volatile string CallName = "";           // the call or voice channel you're connected to
-    // Things worth a corner HUD message: (icon, title, detail). Set by the Party panel.
+    // Things worth a corner HUD message: (icon, title, detail). Set by the Guide.
     public static Action<string, string, string> Notify = (i, t, d) => { };
     // Last known status of people in your DM list (filled whenever the chat list is read)
     public static readonly Dictionary<string, string> Statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
