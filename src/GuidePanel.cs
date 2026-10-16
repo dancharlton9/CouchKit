@@ -45,6 +45,7 @@ static class GuidePanel
     class Level { public string Title; public List<Item> Items; public int Selected; }
 
     static Form panel, banner, hud;
+    static IntPtr panelHandle;   // usable from any thread
     static Control ui;   // for marshalling onto the UI thread
     static List<Item> items = new List<Item>();
     static int selected, firstVisible;
@@ -52,6 +53,8 @@ static class GuidePanel
     static readonly Stack<Level> parents = new Stack<Level>();   // empty = main menu
     static string message = "";
     static IntPtr returnTo;
+    static DateTime openedAt;
+    static bool reclaimLogged;
     static DiscordSettings S = new DiscordSettings();
     public static volatile bool IsOpen;
     public static Action EnterMouseMode = () => { };
@@ -92,6 +95,8 @@ static class GuidePanel
             ui = new Control(); ui.CreateControl();
             panel = new Form { FormBorderStyle = FormBorderStyle.None, TopMost = true, ShowInTaskbar = false, BackColor = Back, StartPosition = FormStartPosition.Manual };
             panel.Paint += (s, e) => PaintPanel(e.Graphics, panel.ClientSize);
+            panelHandle = panel.Handle;
+            DiscordBridge.KeepInFront = () => IsOpen ? panelHandle : IntPtr.Zero;
             banner = new NoActivateForm { FormBorderStyle = FormBorderStyle.None, TopMost = true, ShowInTaskbar = false, BackColor = Card, StartPosition = FormStartPosition.Manual };
             banner.Paint += (s, e) => PaintBanner(e.Graphics, banner.ClientSize);
             hud = new NoActivateForm { FormBorderStyle = FormBorderStyle.None, TopMost = true, ShowInTaskbar = false, BackColor = Card, StartPosition = FormStartPosition.Manual };
@@ -118,6 +123,8 @@ static class GuidePanel
     public static void Open()
     {
         returnTo = GetForegroundWindow();
+        openedAt = DateTime.Now;
+        reclaimLogged = false;
         message = "";
         selected = firstVisible = 0;
         parents.Clear();
@@ -735,6 +742,14 @@ static class GuidePanel
     static void Tick()
     {
         Pad.Refresh();
+        // While open, the Guide stays in front: something else grabbing the focus (Discord's window
+        // reacting to a background read, Playnite) would otherwise cover it. Not while CouchKit is
+        // itself typing into Discord (a quick reply), and not during the opening slide.
+        if (IsOpen && panel.Visible && !DiscordBridge.Busy && GetForegroundWindow() != panelHandle && (DateTime.Now - openedAt).TotalMilliseconds > 400)
+        {
+            CouchKit.BringToFront(panelHandle);
+            if (!reclaimLogged) { reclaimLogged = true; CouchKit.Log("Guide: another window took the front while the Guide was open; brought the Guide back"); }
+        }
         // A ring that ended without a call starting is a missed call
         if (DiscordBridge.Incoming) { ringingFrom = DiscordBridge.IncomingFrom; ringEnded = DateTime.MinValue; }
         else if (lastIncoming) ringEnded = DateTime.Now;

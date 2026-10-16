@@ -160,6 +160,7 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `Controller.GuideButton` | `true` | Tap the Xbox button to switch between the game and Playnite |
 | `Controller.GuideTapMaxMs` | `500` | Longer presses are left to Windows |
 | `Controller.DiscordButtons` | `true` | The Guide (double-tap the Xbox button) |
+| `Controller.GuideOpensWith` | `DoubleTap` | `DoubleTap`: a tap switches between the game and Playnite, and a double tap opens the Guide. `SingleTap`: a tap opens the Guide straight away (switch from its Home tab) |
 | `Controller.Style` | `Auto` | Button faces and names in the Guide: `Auto` (detect), `Xbox`, `PlayStation`, `Switch` or `Generic` |
 | `Controller.MouseMode` / `MouseSpeed` | `true` / `45` | Mouse mode (from the Guide's Party tab), and the pointer's top speed in pixels per 30 ms |
 | `Display.KeepPlayniteOnTv` | `true` | Keep Playnite off the streaming display |

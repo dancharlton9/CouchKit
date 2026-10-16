@@ -82,8 +82,9 @@ class ControllerSettings
     public double MouseSpeed { get; set; }    // pointer pixels per 30 ms at full tilt
     public bool DiscordButtons { get; set; }  // double-tap the Xbox button for the Guide
     public string Style { get; set; }         // button faces and names in the Guide: Auto, Xbox, PlayStation, Switch, Generic
+    public string GuideOpensWith { get; set; } // "DoubleTap" (a tap switches game/Playnite) or "SingleTap" (a tap opens the Guide)
 
-    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; Style = "Auto"; }
+    public ControllerSettings() { Enabled = true; CloseHoldMs = 1500; KillHoldMs = 4000; GuideButton = true; GuideTapMaxMs = 500; MouseMode = true; MouseSpeed = 45; DiscordButtons = true; Style = "Auto"; GuideOpensWith = "DoubleTap"; }
 }
 
 class DisplaySettings

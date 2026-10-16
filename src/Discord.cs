@@ -59,6 +59,11 @@ static class DiscordBridge
 
     // keepScreen: if Discord comes to the front during the action, put back whatever was in front
     // (the game or Playnite) and minimise Discord. Off only for deliberately opening Discord.
+    // The window that must end up in front after Discord work (the Guide while it's open), and
+    // whether a Discord action is running (the Guide leaves the focus alone meanwhile)
+    public static Func<IntPtr> KeepInFront = () => IntPtr.Zero;
+    public static volatile bool Busy;
+
     public static void Do(Func<string> action, Action<string> done, bool keepScreen)
     {
         if (!S.Enabled) return;
@@ -66,7 +71,9 @@ static class DiscordBridge
         {
             string msg;
             IntPtr before = GetForegroundWindow();
+            Busy = true;
             try { msg = action(); } catch (Exception ex) { msg = "Discord: " + ex.Message; }
+            finally { Busy = false; }
             if (keepScreen) PutScreenBack(before);
             if (!string.IsNullOrEmpty(msg)) CouchKit.Log(msg);
             if (done != null) done(msg);
@@ -513,6 +520,10 @@ static class DiscordBridge
             uint fgPid, beforePid;
             GetWindowThreadProcessId(GetForegroundWindow(), out fgPid);
             GetWindowThreadProcessId(before, out beforePid);
+            // While the Guide is open it's what belongs in front, not whatever was there when the work
+            // was queued (that can be Playnite, if the work started before the Guide appeared)
+            IntPtr guide = KeepInFront();
+            if (guide != IntPtr.Zero) { before = guide; beforePid = 0; }
             if (!discord.Contains(fgPid) || discord.Contains(beforePid) || before == IntPtr.Zero) return;
             IntPtr main = Process.GetProcessesByName("Discord").Select(p => p.MainWindowHandle).FirstOrDefault(h => h != IntPtr.Zero);
             if (main != IntPtr.Zero) ShowWindow(main, 6 /* SW_MINIMIZE */);
@@ -561,6 +572,7 @@ static class DiscordBridge
             if (h == IntPtr.Zero) continue;
             Thread.Sleep(2000);   // let it finish loading
             ShowWindow(h, 6 /* SW_MINIMIZE */);
+            if (KeepInFront() != IntPtr.Zero) before = KeepInFront();
             if (before != IntPtr.Zero) CouchKit.BringToFront(before);
             return AutomationElement.FromHandle(h);
         }

@@ -681,13 +681,23 @@ static class CouchKit
 
                     // Xbox button: a tap switches game/Playnite (or closes the Guide); a double tap
                     // opens the Guide (or leaves mouse mode). A single tap waits briefly to be sure.
+                    // With GuideOpensWith = SingleTap, a tap opens/closes the Guide straight away instead.
                     bool guide = connected && (s.Pad.Buttons & Guide) != 0;
                     if (guide && guideHeld[i] == null) guideHeld[i] = Stopwatch.StartNew();
                     else if (!guide && guideHeld[i] != null)
                     {
                         bool tap = guideHeld[i].ElapsedMilliseconds <= S.Controller.GuideTapMaxMs;
                         guideHeld[i] = null;
-                        if (tap && pendingTap[i] != null && pendingTap[i].ElapsedMilliseconds <= DoubleTapMs)
+                        if (tap && "SingleTap".Equals(S.Controller.GuideOpensWith, StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                if (S.Controller.DiscordButtons) PadExtras.DoubleTap(i, S.Controller);   // opens/closes the Guide, leaves mouse mode
+                                else if (S.Controller.GuideButton) ToggleGameAndPlaynite();
+                            }
+                            catch (Exception ex) { Log("Xbox button tap failed: " + ex.Message); }
+                        }
+                        else if (tap && pendingTap[i] != null && pendingTap[i].ElapsedMilliseconds <= DoubleTapMs)
                         {
                             pendingTap[i] = null;
                             try { PadExtras.DoubleTap(i, S.Controller); }

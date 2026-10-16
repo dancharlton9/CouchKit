@@ -8,7 +8,8 @@
     "DiscordButtons": true,
     "MouseMode": true,
     "MouseSpeed": 45,
-    "Style": "Auto"
+    "Style": "Auto",
+    "GuideOpensWith": "DoubleTap"
   },
   "Display": {
     "KeepPlayniteOnTv": true,

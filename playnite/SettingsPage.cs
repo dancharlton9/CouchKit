@@ -133,8 +133,10 @@ public class SettingsPage : UserControl
 
         Section("Controller");
         Check("Controller.Enabled", "Use the controller for CouchKit (Xbox button, close game)");
-        Check("Controller.GuideButton", "Tap the Xbox button to switch between the game and Playnite");
-        Check("Controller.DiscordButtons", "Double-tap the Xbox button to open the Guide");
+        Check("Controller.DiscordButtons", "Open the Guide with the Xbox button");
+        Choice("Controller.GuideOpensWith", "Open the Guide with", new[] { "DoubleTap", "SingleTap" }, new[] { "A double tap", "A single press" },
+               "Double tap: a single tap switches between the game and Playnite. Single press: opens the Guide straight away (switch from its Home tab).");
+        Check("Controller.GuideButton", "Tap the Xbox button to switch between the game and Playnite (double-tap mode)");
         Choice("Controller.Style", "Button style in the Guide", new[] { "Auto", "Xbox", "PlayStation", "Switch", "Generic" },
                "Auto spots PlayStation and Switch controllers (used through Steam Input or DS4Windows).");
         Check("Controller.MouseMode", "Allow mouse mode (left stick moves the pointer) from the Guide");
@@ -223,6 +225,17 @@ public class SettingsPage : UserControl
         box.Checked += (s, e) => S.Set(path, true);
         box.Unchecked += (s, e) => S.Set(path, false);
         page.Children.Add(box);
+    }
+
+    // A choice shown with friendly names but stored as values
+    void Choice(string path, string label, string[] values, string[] names, string hint)
+    {
+        var combo = new ComboBox { ItemsSource = names, MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Left };
+        string current = (string)S.Get(path) ?? values[0];
+        int at = Array.FindIndex(values, v => v.Equals(current, StringComparison.OrdinalIgnoreCase));
+        combo.SelectedIndex = at >= 0 ? at : 0;
+        combo.SelectionChanged += (s, e) => { if (combo.SelectedIndex >= 0) S.Set(path, values[combo.SelectedIndex]); };
+        Row(label, combo, hint);
     }
 
     void Choice(string path, string label, string[] options, string hint)
