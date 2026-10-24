@@ -651,6 +651,7 @@ static class CouchKit
             Achievements.Enabled = S.Achievements.Enabled;
             SmartHome.Log = Log;
             SmartHome.Start(S.SmartHome, S.Lighting);
+            HomeAssistantMqtt.Start(S.SmartHome);
 
             var held = new Stopwatch[4];
             var stage = new int[4];

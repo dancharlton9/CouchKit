@@ -169,6 +169,13 @@ public class SettingsPage : UserControl
         Secret("SmartHome.WebhookUrl", "Game-colours webhook", "Optional: an automation's webhook URL, sent the game's colours when it starts.");
         Buttons(Button("Test Home Assistant", () => TestHomeAssistant()));
 
+        Section("Home Assistant device (MQTT)");
+        Note("Shows this PC in Home Assistant as a device: what's playing (with cover art), session time, CPU and GPU temperatures, Discord call. Uses MQTT discovery, so nothing to set up in Home Assistant.");
+        Text("SmartHome.MqttHost", "MQTT broker", "The broker Home Assistant uses, e.g. 192.168.1.10. Leave empty to turn this off.");
+        Text("SmartHome.MqttUsername", "Username", null);
+        Secret("SmartHome.MqttPassword", "Password", null);
+        Text("SmartHome.MqttDeviceName", "Device name", "How it appears in Home Assistant (default: Gaming PC).");
+
         Section("Nanoleaf");
         Text("SmartHome.NanoleafHost", "Panels' IP address", "Find it in your router, or in the Nanoleaf app → device → Info.");
         Secret("SmartHome.NanoleafToken", "Token", "Use Pair below to get one.");

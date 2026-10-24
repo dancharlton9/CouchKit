@@ -157,13 +157,20 @@ class SmartHomeSettings
     public string NanoleafToken { get; set; }
     public int NanoleafTransitionTime { get; set; }   // Flow speed, in tenths of a second per step
     // Home Assistant, for the Guide's Lights tab: address and a long-lived access token. Empty = no Lights tab.
+    // MQTT broker for the Home Assistant "Gaming PC" device (MQTT discovery); empty host = off
+    public string MqttHost { get; set; }
+    public int MqttPort { get; set; }
+    public string MqttUsername { get; set; }
+    public string MqttPassword { get; set; }
+    public string MqttDeviceName { get; set; }
+
     public string HomeAssistantUrl { get; set; }
     public string HomeAssistantToken { get; set; }
     // Scenes or scripts listed in the Lights tab (entity ids, e.g. "scene.office_gaming", "script.office_calls")
     public string[] LightScenes { get; set; }
     // Lights switched by "Room lights on/off" (entity ids, e.g. "light.office_main")
     public string[] RoomLights { get; set; }
-    public SmartHomeSettings() { WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; HomeAssistantUrl = ""; HomeAssistantToken = ""; LightScenes = new string[0]; RoomLights = new string[0]; }
+    public SmartHomeSettings() { MqttHost = ""; MqttPort = 1883; MqttUsername = ""; MqttPassword = ""; MqttDeviceName = "Gaming PC"; WebhookUrl = ""; NanoleafHost = ""; NanoleafToken = ""; NanoleafTransitionTime = 24; HomeAssistantUrl = ""; HomeAssistantToken = ""; LightScenes = new string[0]; RoomLights = new string[0]; }
 }
 
 class DiscordSettings

@@ -62,6 +62,11 @@ static class Status
             add("Smart home", "bulb", parts.Any(p => p.Contains("needs")) ? State.NeedsSetup : State.Working, string.Join("  ·  ", parts));
         }
 
+        // Home Assistant device over MQTT
+        if (string.IsNullOrEmpty(s.SmartHome.MqttHost)) add("Home Assistant device", "pc", State.Off, "Optional: set an MQTT broker to show this PC in Home Assistant");
+        else if (HomeAssistantMqtt.Connected) add("Home Assistant device", "pc", State.Working, "Publishing as \"" + (string.IsNullOrEmpty(s.SmartHome.MqttDeviceName) ? "Gaming PC" : s.SmartHome.MqttDeviceName) + "\" via " + s.SmartHome.MqttHost);
+        else add("Home Assistant device", "pc", State.Problem, HomeAssistantMqtt.Problem.Length > 0 ? HomeAssistantMqtt.Problem : "Connecting to " + s.SmartHome.MqttHost + "…");
+
         // Discord
         if (!s.Discord.Enabled) add("Discord", "chat", State.Off, DiscordInstalled ? "Turned off in couchkit.json" : "Not installed");
         else if (!DiscordInstalled) add("Discord", "chat", State.Off, "Not installed, so there's no Party tab");

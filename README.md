@@ -191,6 +191,8 @@ In JSON, backslashes in paths are written twice. Restart Playnite (or CouchKit) 
 | `SmartHome.WebhookUrl` | empty (off) | URL that receives a POST when a game starts, `{"event":"game_start","game":"<name>","colors":[[r,g,b],...]}`, and when it stops, `{"event":"game_stop"}` |
 | `SmartHome.NanoleafHost` / `NanoleafToken` | empty (off) | IP address and API token of Nanoleaf panels to animate in the game's colours. See below for getting a token |
 | `SmartHome.NanoleafTransitionTime` | `24` | Speed of the Nanoleaf flow, in tenths of a second per step |
+| `SmartHome.MqttHost` / `MqttPort` / `MqttUsername` / `MqttPassword` | empty (off) / `1883` | An MQTT broker (the one Home Assistant uses). CouchKit then appears in Home Assistant as a device, through MQTT discovery: what's playing, with cover art, session time, CPU and GPU temperature and load, memory, Discord call and controller battery. It shows as offline when the PC is off |
+| `SmartHome.MqttDeviceName` | `Gaming PC` | The device's name in Home Assistant |
 | `SmartHome.HomeAssistantUrl` / `HomeAssistantToken` | empty (off) | Home Assistant address (for example `http://homeassistant.local:8123`) and a long-lived access token (your profile → Security), for the Guide's **Lights** tab |
 | `SmartHome.LightScenes` | none | Scenes or scripts listed on the Lights tab, for example `["scene.movie", "script.party"]` |
 | `SmartHome.RoomLights` | none | Lights switched by **Room lights on/off**, for example `["light.ceiling", "light.lamp"]` |
