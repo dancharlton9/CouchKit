@@ -78,13 +78,15 @@ static class CouchKit
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
 
     const uint MONITOR_DEFAULTTONEAREST = 2;
-    const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+    const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002;
     const int SW_SHOWNOACTIVATE = 4, SW_SHOWMINNOACTIVE = 7;
     static readonly IntPtr DPI_AWARENESS_PER_MONITOR_V2 = new IntPtr(-4);
     static bool minimisedByUs;
     static bool? playniteMuted;
     static bool hadVirtualDisplay;
     static DateTime? focusPlayniteAt;
+    static bool hadPhysicalScreen = true;
+    static DateTime? tvBackAt;
 
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
@@ -1001,6 +1003,29 @@ static class CouchKit
             Log("Virtual display gone");
         }
         hadVirtualDisplay = hasVirtual;
+
+        // TV back after being disconnected (switched off, or an HDMI switch changing input): Windows
+        // puts other windows back on it on top of Playnite (the Xbox app, notifications...). Once it
+        // settles, bring Playnite or the running game back to the front. While streaming, only raise
+        // it on the TV without taking the focus from the remote session.
+        if (physical.HasValue && !hadPhysicalScreen) { tvBackAt = DateTime.Now.AddSeconds(3); Log("TV reconnected"); }
+        hadPhysicalScreen = physical.HasValue;
+        if (tvBackAt.HasValue && DateTime.Now >= tvBackAt.Value)
+        {
+            tvBackAt = null;
+            if (!hasVirtual && S.Display.FocusPlayniteAfterStream) focusPlayniteAt = DateTime.Now;
+            else
+            {
+                IntPtr front = MainWindowOf(PlayniteGameProcesses());
+                if (front == IntPtr.Zero || IsIconic(front)) front = hwnd;
+                if (!IsIconic(front))
+                {
+                    SetWindowPos(front, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    Log("TV back while streaming: raised " + ProcessLabel(WindowPid(front)) + " to the top of the TV");
+                }
+            }
+        }
+
         if (focusPlayniteAt.HasValue && DateTime.Now >= focusPlayniteAt.Value)
         {
             focusPlayniteAt = null;
